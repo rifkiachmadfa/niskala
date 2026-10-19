@@ -27,3 +27,25 @@
 - Keputusan: Pakai format A–E dari Project Instructions. Prompt `PROMPTS.md` C3 disesuaikan.
 - Alternatif yang ditolak: Format template.
 - Dampak: Hanya dokumentasi.
+
+## DEC-005 — Source script ditaruh di `src/` bergaya Rojo, tanpa `default.project.json`
+- Tanggal: 2026-10-19
+- Konteks / masalah: Repo tidak punya Rojo; Pertanyaan Terbuka no. 2 belum dijawab. Script perlu tempat di repo agar bisa di-review.
+- Keputusan: Taruh di `src/<Service>/...` dengan penamaan Rojo (`.server.lua`, `.client.lua`, `.lua`). Tidak menambah `default.project.json`; script disalin manual ke Studio sesuai hierarki di CURRENT_STATE.
+- Alternatif yang ditolak: Menambah mapping Rojo tanpa persetujuan (CLAUDE.md bagian 5).
+- Dampak: Jika pemilik memilih Rojo, mapping bisa ditambah tanpa mengubah isi file.
+
+## DEC-006 — ProximityPrompt NPC dibuat runtime hanya jika model belum punya
+- Tanggal: 2026-10-19
+- Konteks / masalah: Model Bambang sudah ada; belum diketahui apakah punya ProximityPrompt.
+- Keputusan: DialogueService memakai ProximityPrompt yang sudah ada di model; jika tidak ada, membuat satu objek logika nonvisual "DialoguePrompt" saat runtime di part jangkar model. Model tidak diubah di file.
+- Alternatif yang ditolak: Menambah prompt manual di Studio (tidak terdokumentasi di repo).
+- Dampak: Jika model punya prompt lain untuk fungsi berbeda, dialog akan ikut terpicu; perlu dicek saat uji.
+
+## DEC-007 — Flag dialog sementara di memori; GameConfig dibuat minimal
+- Tanggal: 2026-10-19
+- Konteks / masalah: SaveService (Phase 8) dan config Phase 2 belum ada.
+- Keputusan: Flag dialog (mis. `Bambang.IntroDone`) disimpan di memori server per pemain dan hilang saat keluar. `GameConfig` hanya berisi key yang dipakai dialog; Phase 2+ menambah key ke modul yang sama.
+- Alternatif yang ditolak: DataStore sekarang (di luar scope tugas); modul config terpisah (risiko dua sumber kebenaran).
+- Dampak: Dialog intro Bambang diulang setiap pemain bergabung ulang sampai Phase 8.
+

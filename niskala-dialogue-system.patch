@@ -1,0 +1,855 @@
+diff --git a/.ai/CHANGELOG.md b/.ai/CHANGELOG.md
+index 0b8756d..deac281 100644
+--- a/.ai/CHANGELOG.md
++++ b/.ai/CHANGELOG.md
+@@ -1,5 +1,11 @@
+ # CHANGELOG
+ 
++## 2026-10-19 (b) — NPC Dialogue System + dialog Bambang
++- Perubahan: Menambah sistem dialog NPC modular (server + client) dan data dialog NPC Bambang (pemandu: aturan game + arahan ke Desa).
++- Sistem terdampak: baru (dialog). Tidak menyentuh aset Workspace.
++- File/skrip: src/ReplicatedStorage/Shared/GameConfig.lua, src/ServerScriptService/Dialogue/{DialogueBootstrap.server,DialogueService,DialogueTypes,NPCRegistry}.lua, src/ServerScriptService/Dialogue/Data/Bambang.lua, src/StarterPlayer/StarterPlayerScripts/Dialogue/DialogueClient.client.lua
++- Hasil test: sintaks seluruh file lolos `luau-compile`; logika substitusi placeholder diuji dengan Luau CLI. BELUM diuji di Roblox Studio.
++
+ ## 2026-10-19
+ - Perubahan: Mengisi `CLAUDE.md` dan `.ai/*` dengan data game MC Cari Harta Karun di Candi; menyesuaikan `README.md`, `CHECKLIST.md`, `PROMPTS.md`.
+ - Sistem terdampak: dokumentasi saja. Tidak ada kode gameplay, tidak ada aset Workspace.
+diff --git a/.ai/CURRENT_STATE.md b/.ai/CURRENT_STATE.md
+index 10905a9..4753bb2 100644
+--- a/.ai/CURRENT_STATE.md
++++ b/.ai/CURRENT_STATE.md
+@@ -8,6 +8,9 @@ Branch: main
+ - (none) Repo belum berisi kode game.
+ 
+ ## Incomplete systems
++- Dialog NPC (sebagian Phase 3): `src/ServerScriptService/Dialogue/*`, `src/StarterPlayer/StarterPlayerScripts/Dialogue/DialogueClient.client.lua`, `src/ReplicatedStorage/Shared/GameConfig.lua`. Status: kode ditulis, sintaks lolos, BELUM diuji di Studio. Belum ada: TrustService, GateController, Kepala Desa, flag dialog belum disimpan (Phase 8).
++  - Struktur Studio: ReplicatedStorage/Shared/GameConfig; ServerScriptService/Dialogue/{DialogueBootstrap (Script), DialogueService, DialogueTypes, NPCRegistry, Data/Bambang}; StarterPlayer/StarterPlayerScripts/Dialogue/DialogueClient (LocalScript). Remote dibuat runtime: ReplicatedStorage/DialogueRemotes/{Open,Close,Finish}.
++  - Tambah NPC baru: buat `Data/<NPC>` mengikuti `Data/Bambang`, lalu daftarkan di `NPCRegistry`.
+ - Semua sistem gameplay belum dimulai.
+ - Placeholder template (`CLAUDE.md`, `.ai/*`) sudah diisi dengan data game (perubahan belum di-commit).
+ 
+diff --git a/.ai/DECISIONS.md b/.ai/DECISIONS.md
+index ede26b6..05019e0 100644
+--- a/.ai/DECISIONS.md
++++ b/.ai/DECISIONS.md
+@@ -27,3 +27,25 @@
+ - Keputusan: Pakai format A–E dari Project Instructions. Prompt `PROMPTS.md` C3 disesuaikan.
+ - Alternatif yang ditolak: Format template.
+ - Dampak: Hanya dokumentasi.
++
++## DEC-005 — Source script ditaruh di `src/` bergaya Rojo, tanpa `default.project.json`
++- Tanggal: 2026-10-19
++- Konteks / masalah: Repo tidak punya Rojo; Pertanyaan Terbuka no. 2 belum dijawab. Script perlu tempat di repo agar bisa di-review.
++- Keputusan: Taruh di `src/<Service>/...` dengan penamaan Rojo (`.server.lua`, `.client.lua`, `.lua`). Tidak menambah `default.project.json`; script disalin manual ke Studio sesuai hierarki di CURRENT_STATE.
++- Alternatif yang ditolak: Menambah mapping Rojo tanpa persetujuan (CLAUDE.md bagian 5).
++- Dampak: Jika pemilik memilih Rojo, mapping bisa ditambah tanpa mengubah isi file.
++
++## DEC-006 — ProximityPrompt NPC dibuat runtime hanya jika model belum punya
++- Tanggal: 2026-10-19
++- Konteks / masalah: Model Bambang sudah ada; belum diketahui apakah punya ProximityPrompt.
++- Keputusan: DialogueService memakai ProximityPrompt yang sudah ada di model; jika tidak ada, membuat satu objek logika nonvisual "DialoguePrompt" saat runtime di part jangkar model. Model tidak diubah di file.
++- Alternatif yang ditolak: Menambah prompt manual di Studio (tidak terdokumentasi di repo).
++- Dampak: Jika model punya prompt lain untuk fungsi berbeda, dialog akan ikut terpicu; perlu dicek saat uji.
++
++## DEC-007 — Flag dialog sementara di memori; GameConfig dibuat minimal
++- Tanggal: 2026-10-19
++- Konteks / masalah: SaveService (Phase 8) dan config Phase 2 belum ada.
++- Keputusan: Flag dialog (mis. `Bambang.IntroDone`) disimpan di memori server per pemain dan hilang saat keluar. `GameConfig` hanya berisi key yang dipakai dialog; Phase 2+ menambah key ke modul yang sama.
++- Alternatif yang ditolak: DataStore sekarang (di luar scope tugas); modul config terpisah (risiko dua sumber kebenaran).
++- Dampak: Dialog intro Bambang diulang setiap pemain bergabung ulang sampai Phase 8.
++
+diff --git a/.ai/TASKS.md b/.ai/TASKS.md
+index c3196e1..3976879 100644
+--- a/.ai/TASKS.md
++++ b/.ai/TASKS.md
+@@ -1,6 +1,7 @@
+ # TASKS
+ 
+ ## In progress
++- [ ] Dialog NPC Bambang (bagian Phase 3): kode ditulis, MENUNGGU pengujian di Studio (lihat CURRENT_STATE)
+ - [ ] PHASE 0 — Audit & pemetaan (menunggu struktur Workspace + GDD)
+ 
+ ## Next (urut prioritas)
+diff --git a/src/ReplicatedStorage/Shared/GameConfig.lua b/src/ReplicatedStorage/Shared/GameConfig.lua
+new file mode 100644
+index 0000000..e9e138c
+--- /dev/null
++++ b/src/ReplicatedStorage/Shared/GameConfig.lua
+@@ -0,0 +1,21 @@
++--!strict
++-- Konfigurasi pusat game. Semua angka gameplay yang bisa diubah ditaruh di sini.
++-- Saat ini baru berisi nilai yang dibutuhkan sistem dialog. Phase 2+ akan MENAMBAH
++-- key di modul ini (jangan membuat modul config kedua).
++
++local GameConfig = {
++	-- GDD
++	StartingCoins = 100,
++	TrustGateThreshold = 70,
++
++	Dialogue = {
++		-- Dialog tertutup otomatis jika pemain lebih jauh dari
++		-- (MaxActivationDistance prompt + padding ini) dari NPC.
++		CloseDistancePadding = 8,
++		DistanceCheckInterval = 0.25,
++		-- Kecepatan efek mengetik (huruf per detik) di sisi client.
++		TypewriterCharsPerSecond = 45,
++	},
++}
++
++return GameConfig
+diff --git a/src/ServerScriptService/Dialogue/Data/Bambang.lua b/src/ServerScriptService/Dialogue/Data/Bambang.lua
+new file mode 100644
+index 0000000..8c267b2
+--- /dev/null
++++ b/src/ServerScriptService/Dialogue/Data/Bambang.lua
+@@ -0,0 +1,54 @@
++--!strict
++-- Data dialog NPC Bambang (pemandu di Pantai).
++-- Hanya DATA. Logika ada di DialogueService.
++-- Placeholder {Key} diganti dari GameConfig, mis. {StartingCoins}, {TrustGateThreshold}.
++
++local Types = require(script.Parent.Parent.DialogueTypes)
++
++local Bambang: Types.NPCDefinition = {
++	id = "Bambang",
++	displayName = "Bambang",
++	modelName = "Bambang",
++	prompt = {
++		actionText = "Bicara",
++		maxActivationDistance = 10,
++	},
++
++	conversations = {
++		Intro = {
++			lines = {
++				{ text = "Wah, ada tamu baru! Selamat datang di pulau kami. Namaku Bambang, aku yang biasa menyambut pendatang di pantai ini." },
++				{ text = "Sebelum kamu jalan-jalan, aku jelaskan dulu aturan mainnya ya. Tenang, tidak ribet kok." },
++				{ text = "Pertama, jaga badanmu. Ada tiga hal yang perlu kamu perhatikan: Nyawa (HP), Lapar (Hunger), dan Haus (Thirsty)." },
++				{ text = "Lapar dan haus akan turun pelan-pelan seiring waktu. Kalau lapar habis, HP-mu berkurang terus. Kalau haus habis, jalanmu jadi lambat." },
++				{ text = "Tenang, kamu bisa membeli makanan dan minuman di toko. Modal awalmu {StartingCoins} Koin, pakai dengan bijak ya." },
++				{ text = "Kalau HP-mu habis, kamu akan bangun lagi di Pelabuhan dengan lapar dan haus yang sudah terisi lagi. Kemajuan tugasmu tidak akan hilang." },
++				{ text = "Kedua, soal warga desa. Mereka belum mengenalmu, jadi belum tentu percaya. Bantulah mereka lewat berbagai tugas, nanti kamu dapat Koin dan kepercayaan warga." },
++				{ text = "Ingat, kepercayaan tidak bisa dibeli dan tidak naik hanya karena ngobrol. Satu-satunya cara adalah menyelesaikan tugas dari warga." },
++				{ text = "Nah, di pulau ini ada sebuah Candi tua. Katanya ada harta karun tersimpan di dalamnya. Penjaganya baru mengizinkan masuk kalau kepercayaan warga sudah mencapai {TrustGateThreshold}." },
++				{ text = "Kalau mau bicara dengan seseorang atau mengambil sesuatu, dekati lalu tekan E. Di HP, ketuk tombol yang muncul di layar." },
++				{ text = "Sekarang, ayo menuju Desa. Ikuti jalan dari pantai ini, nanti kamu akan bertemu Kepala Desa. Dialah yang akan memberimu tugas pertama." },
++				{ text = "Semangat ya! Kalau lupa aturannya, temui aku lagi kapan saja." },
++			},
++			setFlags = {
++				["Bambang.IntroDone"] = true,
++			},
++		},
++
++		Reminder = {
++			lines = {
++				{ text = "Eh, kamu lagi! Jangan lupa: jaga lapar dan hausmu, bantu warga supaya mereka percaya, dan Candi baru terbuka kalau kepercayaan warga mencapai {TrustGateThreshold}." },
++				{ text = "Desa ada di ujung jalan dari pantai ini. Temui Kepala Desa kalau belum. Semoga beruntung!" },
++			},
++		},
++	},
++
++	selectConversation = function(ctx)
++		if ctx.hasFlag("Bambang.IntroDone") then
++			return "Reminder"
++		end
++		return "Intro"
++	end,
++}
++
++return Bambang
+diff --git a/src/ServerScriptService/Dialogue/DialogueBootstrap.server.lua b/src/ServerScriptService/Dialogue/DialogueBootstrap.server.lua
+new file mode 100644
+index 0000000..64c50c2
+--- /dev/null
++++ b/src/ServerScriptService/Dialogue/DialogueBootstrap.server.lua
+@@ -0,0 +1,7 @@
++--!strict
++-- Titik masuk sistem dialog NPC (server).
++
++local DialogueService = require(script.Parent.DialogueService)
++local NPCRegistry = require(script.Parent.NPCRegistry)
++
++DialogueService.Start(NPCRegistry)
+diff --git a/src/ServerScriptService/Dialogue/DialogueService.lua b/src/ServerScriptService/Dialogue/DialogueService.lua
+new file mode 100644
+index 0000000..f5da0b1
+--- /dev/null
++++ b/src/ServerScriptService/Dialogue/DialogueService.lua
+@@ -0,0 +1,353 @@
++--!strict
++-- DialogueService: sistem dialog NPC generik (server = sumber kebenaran).
++--
++-- Tanggung jawab:
++--   * Mencari Model NPC yang SUDAH ADA di Workspace (tidak membuat/mengubah model).
++--   * Memakai ProximityPrompt yang sudah ada di model; jika tidak ada, membuat satu
++--     objek logika nonvisual bernama "DialoguePrompt" di bagian model NPC.
++--   * Memilih percakapan per pemain (via selectConversation milik data NPC).
++--   * Mengirim baris dialog ke client, memvalidasi sesi, dan menutup dialog jika
++--     pemain menjauh / mati / keluar.
++--   * Menyimpan flag dialog per pemain (SEMENTARA di memori, belum disimpan ke DataStore).
++--
++-- BUKAN tanggung jawab modul ini: koin, quest, kepercayaan, gerbang.
++
++local Players = game:GetService("Players")
++local ReplicatedStorage = game:GetService("ReplicatedStorage")
++local Workspace = game:GetService("Workspace")
++
++local Types = require(script.Parent.DialogueTypes)
++
++local sharedFolder = ReplicatedStorage:WaitForChild("Shared", 5)
++assert(sharedFolder, "[Dialogue] ReplicatedStorage.Shared tidak ditemukan. Buat folder Shared dan taruh GameConfig di dalamnya.")
++local configModule = sharedFolder:WaitForChild("GameConfig", 5)
++assert(configModule, "[Dialogue] ReplicatedStorage.Shared.GameConfig tidak ditemukan.")
++local GameConfig = require(configModule :: ModuleScript) :: any
++
++type Session = {
++	id: number,
++	npcId: string,
++	conversationId: string,
++	anchor: BasePart,
++	closeDistance: number,
++}
++
++type Remotes = {
++	Open: RemoteEvent,
++	Finish: RemoteEvent,
++	Close: RemoteEvent,
++}
++
++local DialogueService = {}
++
++local npcs: { [string]: Types.NPCDefinition } = {}
++local sessions: { [Player]: Session } = {}
++local flagsByUserId: { [number]: { [string]: any } } = {}
++local nextSessionId = 0
++local started = false
++local remotes: Remotes
++
++------------------------------------------------------------------------
++-- Flag dialog per pemain (sementara; Phase 8 akan memindahkannya ke SaveService)
++------------------------------------------------------------------------
++
++function DialogueService.SetFlag(player: Player, key: string, value: any)
++	local flags = flagsByUserId[player.UserId]
++	if not flags then
++		flags = {}
++		flagsByUserId[player.UserId] = flags
++	end
++	flags[key] = value
++end
++
++function DialogueService.GetFlag(player: Player, key: string): any
++	local flags = flagsByUserId[player.UserId]
++	if flags then
++		return flags[key]
++	end
++	return nil
++end
++
++function DialogueService.HasFlag(player: Player, key: string): boolean
++	local value = DialogueService.GetFlag(player, key)
++	return value ~= nil and value ~= false
++end
++
++function DialogueService.IsInDialogue(player: Player): boolean
++	return sessions[player] ~= nil
++end
++
++------------------------------------------------------------------------
++-- Helper
++------------------------------------------------------------------------
++
++local function formatText(text: string): string
++	local result = string.gsub(text, "{(%w+)}", function(key: string)
++		local value = GameConfig[key]
++		if value ~= nil then
++			return tostring(value)
++		end
++		warn(("[Dialogue] Placeholder {%s} tidak ada di GameConfig"):format(key))
++		return nil
++	end)
++	return result
++end
++
++local function getRoot(player: Player): BasePart?
++	local character = player.Character
++	if not character then
++		return nil
++	end
++	local root = character:FindFirstChild("HumanoidRootPart")
++	if root and root:IsA("BasePart") then
++		return root
++	end
++	return nil
++end
++
++local function isAlive(player: Player): boolean
++	local character = player.Character
++	if not character then
++		return false
++	end
++	local humanoid = character:FindFirstChildOfClass("Humanoid")
++	return humanoid ~= nil and humanoid.Health > 0
++end
++
++local function endSession(player: Player, session: Session, notifyClient: boolean)
++	if sessions[player] ~= session then
++		return
++	end
++	sessions[player] = nil
++	if notifyClient and player.Parent == Players then
++		remotes.Close:FireClient(player, session.id)
++	end
++end
++
++local function monitorSession(player: Player, session: Session)
++	local interval: number = GameConfig.Dialogue.DistanceCheckInterval
++	task.spawn(function()
++		while sessions[player] == session do
++			task.wait(interval)
++			if sessions[player] ~= session then
++				return
++			end
++			local root = getRoot(player)
++			if
++				not root
++				or not isAlive(player)
++				or not session.anchor:IsDescendantOf(Workspace)
++				or (root.Position - session.anchor.Position).Magnitude > session.closeDistance
++			then
++				endSession(player, session, true)
++				return
++			end
++		end
++	end)
++end
++
++------------------------------------------------------------------------
++-- Memulai percakapan
++------------------------------------------------------------------------
++
++local function startConversation(def: Types.NPCDefinition, anchor: BasePart, prompt: ProximityPrompt, player: Player)
++	if sessions[player] then
++		return -- sudah dalam dialog
++	end
++	local root = getRoot(player)
++	if not root or not isAlive(player) then
++		return
++	end
++
++	local closeDistance = prompt.MaxActivationDistance + (GameConfig.Dialogue.CloseDistancePadding :: number)
++	if (root.Position - anchor.Position).Magnitude > closeDistance then
++		return -- validasi jarak di server
++	end
++
++	local ctx: Types.SelectContext = {
++		player = player,
++		hasFlag = function(key: string)
++			return DialogueService.HasFlag(player, key)
++		end,
++		getFlag = function(key: string)
++			return DialogueService.GetFlag(player, key)
++		end,
++	}
++
++	local ok, conversationId = pcall(def.selectConversation, ctx)
++	if not ok then
++		warn(("[Dialogue] selectConversation error untuk NPC '%s': %s"):format(def.id, tostring(conversationId)))
++		return
++	end
++	local conversation = def.conversations[conversationId]
++	if not conversation or #conversation.lines == 0 then
++		warn(("[Dialogue] Percakapan '%s' tidak valid untuk NPC '%s'"):format(tostring(conversationId), def.id))
++		return
++	end
++
++	local lines = {}
++	for _, line in conversation.lines do
++		table.insert(lines, {
++			speaker = line.speaker or def.displayName,
++			text = formatText(line.text),
++		})
++	end
++
++	nextSessionId += 1
++	local session: Session = {
++		id = nextSessionId,
++		npcId = def.id,
++		conversationId = conversationId,
++		anchor = anchor,
++		closeDistance = closeDistance,
++	}
++	sessions[player] = session
++
++	remotes.Open:FireClient(player, {
++		sessionId = session.id,
++		npcName = def.displayName,
++		lines = lines,
++	})
++	monitorSession(player, session)
++end
++
++------------------------------------------------------------------------
++-- Mengikat NPC ke model yang sudah ada
++------------------------------------------------------------------------
++
++local function findNPCModel(modelName: string): Model?
++	local found: Model? = nil
++	local count = 0
++	for _, instance in Workspace:GetDescendants() do
++		if instance.Name == modelName and instance:IsA("Model") then
++			count += 1
++			if not found then
++				found = instance
++			end
++		end
++	end
++	if count > 1 then
++		warn(("[Dialogue] Ada %d Model bernama '%s' di Workspace. Memakai yang pertama ditemukan."):format(count, modelName))
++	end
++	return found
++end
++
++local function findAnchor(model: Model): BasePart?
++	if model.PrimaryPart then
++		return model.PrimaryPart
++	end
++	local root = model:FindFirstChild("HumanoidRootPart")
++	if root and root:IsA("BasePart") then
++		return root
++	end
++	return model:FindFirstChildWhichIsA("BasePart", true)
++end
++
++function DialogueService.RegisterNPC(def: Types.NPCDefinition): boolean
++	if npcs[def.id] then
++		warn(("[Dialogue] NPC '%s' sudah terdaftar."):format(def.id))
++		return false
++	end
++
++	local model = findNPCModel(def.modelName)
++	if not model then
++		warn(("[Dialogue] Model '%s' tidak ditemukan di Workspace. NPC '%s' dilewati."):format(def.modelName, def.id))
++		return false
++	end
++	local anchor = findAnchor(model)
++	if not anchor then
++		warn(("[Dialogue] Model '%s' tidak punya BasePart untuk dijadikan titik interaksi."):format(def.modelName))
++		return false
++	end
++
++	-- Pakai prompt yang sudah ada jika ada; jangan menggandakan.
++	local prompt = model:FindFirstChildWhichIsA("ProximityPrompt", true)
++	if prompt then
++		print(("[Dialogue] '%s': memakai ProximityPrompt yang sudah ada (%s)"):format(def.id, prompt:GetFullName()))
++	else
++		local settings = def.prompt
++		local newPrompt = Instance.new("ProximityPrompt")
++		newPrompt.Name = "DialoguePrompt"
++		newPrompt.ActionText = (settings and settings.actionText) or "Bicara"
++		newPrompt.ObjectText = def.displayName
++		newPrompt.HoldDuration = 0
++		newPrompt.MaxActivationDistance = (settings and settings.maxActivationDistance) or 10
++		newPrompt.RequiresLineOfSight = false
++		newPrompt.KeyboardKeyCode = Enum.KeyCode.E
++		newPrompt.Parent = anchor
++		prompt = newPrompt
++		print(("[Dialogue] '%s': membuat DialoguePrompt di %s"):format(def.id, anchor:GetFullName()))
++	end
++	local boundPrompt = prompt :: ProximityPrompt
++
++	npcs[def.id] = def
++	boundPrompt.Triggered:Connect(function(player: Player)
++		startConversation(def, anchor, boundPrompt, player)
++	end)
++	return true
++end
++
++------------------------------------------------------------------------
++-- Start
++------------------------------------------------------------------------
++
++local function getOrCreateRemote(folder: Folder, name: string): RemoteEvent
++	local existing = folder:FindFirstChild(name)
++	if existing and existing:IsA("RemoteEvent") then
++		return existing
++	end
++	local remote = Instance.new("RemoteEvent")
++	remote.Name = name
++	remote.Parent = folder
++	return remote
++end
++
++function DialogueService.Start(definitions: { Types.NPCDefinition })
++	if started then
++		warn("[Dialogue] Start dipanggil lebih dari sekali.")
++		return
++	end
++	started = true
++
++	local folder = ReplicatedStorage:FindFirstChild("DialogueRemotes")
++	if not folder then
++		local newFolder = Instance.new("Folder")
++		newFolder.Name = "DialogueRemotes"
++		newFolder.Parent = ReplicatedStorage
++		folder = newFolder
++	end
++	local remoteFolder = folder :: Folder
++	remotes = {
++		Open = getOrCreateRemote(remoteFolder, "Open"), -- server -> client
++		Close = getOrCreateRemote(remoteFolder, "Close"), -- server -> client
++		Finish = getOrCreateRemote(remoteFolder, "Finish"), -- client -> server
++	}
++
++	-- Client melapor dialog selesai / dilewati. Server memvalidasi sesi.
++	remotes.Finish.OnServerEvent:Connect(function(player: Player, sessionId: unknown, _skipped: unknown)
++		local session = sessions[player]
++		if type(sessionId) ~= "number" or not session or session.id ~= sessionId then
++			return
++		end
++		sessions[player] = nil
++
++		local def = npcs[session.npcId]
++		local conversation = def and def.conversations[session.conversationId]
++		if conversation and conversation.setFlags then
++			for key, value in conversation.setFlags do
++				DialogueService.SetFlag(player, key, value)
++			end
++		end
++	end)
++
++	Players.PlayerRemoving:Connect(function(player: Player)
++		sessions[player] = nil
++		flagsByUserId[player.UserId] = nil
++	end)
++
++	for _, def in definitions do
++		DialogueService.RegisterNPC(def)
++	end
++end
++
++return DialogueService
+diff --git a/src/ServerScriptService/Dialogue/DialogueTypes.lua b/src/ServerScriptService/Dialogue/DialogueTypes.lua
+new file mode 100644
+index 0000000..b4eb187
+--- /dev/null
++++ b/src/ServerScriptService/Dialogue/DialogueTypes.lua
+@@ -0,0 +1,37 @@
++--!strict
++-- Tipe data untuk sistem dialog NPC. Hanya berisi type, tidak ada logika.
++
++export type Line = {
++	text: string, -- boleh memakai placeholder {NamaKey} yang diambil dari GameConfig
++	speaker: string?, -- default: displayName NPC
++}
++
++export type Conversation = {
++	lines: { Line },
++	-- Flag dialog yang di-set server setelah percakapan selesai atau dilewati.
++	setFlags: { [string]: any }?,
++}
++
++export type SelectContext = {
++	player: Player,
++	hasFlag: (key: string) -> boolean,
++	getFlag: (key: string) -> any,
++}
++
++export type PromptSettings = {
++	actionText: string?,
++	maxActivationDistance: number?,
++}
++
++export type NPCDefinition = {
++	id: string,
++	displayName: string,
++	-- Nama Model NPC yang SUDAH ADA di Workspace (dicari rekursif, tidak dibuat/diubah).
++	modelName: string,
++	prompt: PromptSettings?,
++	conversations: { [string]: Conversation },
++	-- Mengembalikan key di `conversations` yang harus dimainkan untuk pemain ini.
++	selectConversation: (ctx: SelectContext) -> string,
++}
++
++return {}
+diff --git a/src/ServerScriptService/Dialogue/NPCRegistry.lua b/src/ServerScriptService/Dialogue/NPCRegistry.lua
+new file mode 100644
+index 0000000..811264d
+--- /dev/null
++++ b/src/ServerScriptService/Dialogue/NPCRegistry.lua
+@@ -0,0 +1,14 @@
++--!strict
++-- Daftar semua NPC yang memakai sistem dialog.
++-- Untuk menambah NPC baru:
++--   1. Buat ModuleScript data di folder Data (salin pola Data/Bambang).
++--   2. Tambahkan require-nya ke daftar di bawah.
++-- Tidak perlu mengubah DialogueService atau script client.
++
++local Types = require(script.Parent.DialogueTypes)
++
++local registry: { Types.NPCDefinition } = {
++	require(script.Parent.Data.Bambang),
++}
++
++return registry
+diff --git a/src/StarterPlayer/StarterPlayerScripts/Dialogue/DialogueClient.client.lua b/src/StarterPlayer/StarterPlayerScripts/Dialogue/DialogueClient.client.lua
+new file mode 100644
+index 0000000..3bf96e7
+--- /dev/null
++++ b/src/StarterPlayer/StarterPlayerScripts/Dialogue/DialogueClient.client.lua
+@@ -0,0 +1,255 @@
++--!strict
++-- DialogueClient: menampilkan UI dialog NPC. Hanya presentasi dan input.
++-- Semua keputusan (isi dialog, validasi sesi, flag) ada di server.
++
++local Players = game:GetService("Players")
++local ReplicatedStorage = game:GetService("ReplicatedStorage")
++local ContextActionService = game:GetService("ContextActionService")
++local ProximityPromptService = game:GetService("ProximityPromptService")
++
++local localPlayer = Players.LocalPlayer
++local playerGui = localPlayer:WaitForChild("PlayerGui")
++
++local remotes = ReplicatedStorage:WaitForChild("DialogueRemotes")
++local openEvent = remotes:WaitForChild("Open") :: RemoteEvent
++local closeEvent = remotes:WaitForChild("Close") :: RemoteEvent
++local finishEvent = remotes:WaitForChild("Finish") :: RemoteEvent
++
++local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameConfig") :: ModuleScript) :: any
++local CHARS_PER_SECOND: number = GameConfig.Dialogue.TypewriterCharsPerSecond
++
++local ACTION_NAME = "NPCDialogueAdvance"
++
++type DialogueLine = { speaker: string, text: string }
++
++------------------------------------------------------------------------
++-- UI (dibuat lewat kode; tidak ada UI dialog lain yang tersedia di proyek)
++------------------------------------------------------------------------
++
++local function create(className: string, props: { [string]: any }, parent: Instance?): any
++	local instance = Instance.new(className)
++	for key, value in props do
++		(instance :: any)[key] = value
++	end
++	instance.Parent = parent
++	return instance
++end
++
++local gui = create("ScreenGui", {
++	Name = "NPCDialogueGui",
++	ResetOnSpawn = false,
++	DisplayOrder = 20,
++	IgnoreGuiInset = true,
++	Enabled = false,
++	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
++}, playerGui)
++
++local panel = create("TextButton", {
++	Name = "Panel",
++	AnchorPoint = Vector2.new(0.5, 1),
++	Position = UDim2.new(0.5, 0, 1, -16),
++	Size = UDim2.new(0.92, 0, 0, 200),
++	BackgroundColor3 = Color3.fromRGB(22, 26, 32),
++	BackgroundTransparency = 0.08,
++	AutoButtonColor = false,
++	Text = "",
++}, gui)
++create("UISizeConstraint", { MaxSize = Vector2.new(780, 240), MinSize = Vector2.new(260, 160) }, panel)
++create("UICorner", { CornerRadius = UDim.new(0, 12) }, panel)
++create("UIStroke", { Color = Color3.fromRGB(255, 214, 120), Transparency = 0.5, Thickness = 1.5 }, panel)
++create("UIPadding", {
++	PaddingTop = UDim.new(0, 12),
++	PaddingBottom = UDim.new(0, 12),
++	PaddingLeft = UDim.new(0, 16),
++	PaddingRight = UDim.new(0, 16),
++}, panel)
++
++local nameLabel = create("TextLabel", {
++	Name = "NPCName",
++	Size = UDim2.new(1, 0, 0, 26),
++	BackgroundTransparency = 1,
++	Font = Enum.Font.GothamBold,
++	TextSize = 20,
++	TextColor3 = Color3.fromRGB(255, 214, 120),
++	TextXAlignment = Enum.TextXAlignment.Left,
++	Text = "",
++}, panel)
++
++local textLabel = create("TextLabel", {
++	Name = "DialogueText",
++	Position = UDim2.new(0, 0, 0, 30),
++	Size = UDim2.new(1, 0, 1, -80),
++	BackgroundTransparency = 1,
++	Font = Enum.Font.Gotham,
++	TextScaled = true,
++	TextColor3 = Color3.fromRGB(240, 240, 240),
++	TextXAlignment = Enum.TextXAlignment.Left,
++	TextYAlignment = Enum.TextYAlignment.Top,
++	TextWrapped = true,
++	Text = "",
++}, panel)
++create("UITextSizeConstraint", { MaxTextSize = 20, MinTextSize = 11 }, textLabel)
++
++local skipButton = create("TextButton", {
++	Name = "Skip",
++	AnchorPoint = Vector2.new(0, 1),
++	Position = UDim2.new(0, 0, 1, 0),
++	Size = UDim2.new(0, 100, 0, 40),
++	BackgroundColor3 = Color3.fromRGB(70, 75, 85),
++	Font = Enum.Font.GothamMedium,
++	TextSize = 16,
++	TextColor3 = Color3.fromRGB(235, 235, 235),
++	Text = "Lewati",
++}, panel)
++create("UICorner", { CornerRadius = UDim.new(0, 8) }, skipButton)
++
++local nextButton = create("TextButton", {
++	Name = "Next",
++	AnchorPoint = Vector2.new(1, 1),
++	Position = UDim2.new(1, 0, 1, 0),
++	Size = UDim2.new(0, 120, 0, 40),
++	BackgroundColor3 = Color3.fromRGB(214, 160, 60),
++	Font = Enum.Font.GothamBold,
++	TextSize = 16,
++	TextColor3 = Color3.fromRGB(25, 20, 10),
++	Text = "Lanjut",
++}, panel)
++create("UICorner", { CornerRadius = UDim.new(0, 8) }, nextButton)
++
++local progressLabel = create("TextLabel", {
++	Name = "Progress",
++	AnchorPoint = Vector2.new(0.5, 1),
++	Position = UDim2.new(0.5, 0, 1, 0),
++	Size = UDim2.new(0, 80, 0, 40),
++	BackgroundTransparency = 1,
++	Font = Enum.Font.Gotham,
++	TextSize = 14,
++	TextColor3 = Color3.fromRGB(160, 160, 160),
++	Text = "",
++}, panel)
++
++------------------------------------------------------------------------
++-- State dialog
++------------------------------------------------------------------------
++
++local active = false
++local currentSessionId = 0
++local currentLines: { DialogueLine } = {}
++local currentIndex = 0
++local typing = false
++local typeToken = 0
++
++local function completeTyping()
++	typeToken += 1
++	typing = false
++	textLabel.MaxVisibleGraphemes = -1
++end
++
++local function showLine(index: number)
++	currentIndex = index
++	local line = currentLines[index]
++	nameLabel.Text = line.speaker
++	textLabel.Text = line.text
++	progressLabel.Text = ("%d / %d"):format(index, #currentLines)
++	nextButton.Text = if index == #currentLines then "Selesai" else "Lanjut"
++
++	typeToken += 1
++	local token = typeToken
++	typing = true
++	textLabel.MaxVisibleGraphemes = 0
++
++	task.spawn(function()
++		local total = utf8.len(line.text) or #line.text
++		local shown = 0
++		while shown < total and typeToken == token do
++			shown += 1
++			textLabel.MaxVisibleGraphemes = shown
++			task.wait(1 / CHARS_PER_SECOND)
++		end
++		if typeToken == token then
++			typing = false
++			textLabel.MaxVisibleGraphemes = -1
++		end
++	end)
++end
++
++local function closeUi()
++	active = false
++	typeToken += 1
++	typing = false
++	gui.Enabled = false
++	ContextActionService:UnbindAction(ACTION_NAME)
++	ProximityPromptService.Enabled = true
++end
++
++local function finish(skipped: boolean)
++	if not active then
++		return
++	end
++	local sessionId = currentSessionId
++	closeUi()
++	finishEvent:FireServer(sessionId, skipped)
++end
++
++local function advance()
++	if not active then
++		return
++	end
++	if typing then
++		completeTyping()
++		return
++	end
++	if currentIndex < #currentLines then
++		showLine(currentIndex + 1)
++	else
++		finish(false)
++	end
++end
++
++local function onAction(_actionName: string, inputState: Enum.UserInputState, _inputObject: InputObject)
++	if inputState == Enum.UserInputState.Begin then
++		advance()
++	end
++	return Enum.ContextActionResult.Sink
++end
++
++panel.Activated:Connect(advance)
++nextButton.Activated:Connect(advance)
++skipButton.Activated:Connect(function()
++	finish(true)
++end)
++
++------------------------------------------------------------------------
++-- Event dari server
++------------------------------------------------------------------------
++
++openEvent.OnClientEvent:Connect(function(payload: any)
++	if type(payload) ~= "table" or type(payload.sessionId) ~= "number" or type(payload.lines) ~= "table" then
++		return
++	end
++	if #payload.lines == 0 then
++		return
++	end
++
++	currentSessionId = payload.sessionId
++	currentLines = payload.lines
++	active = true
++	gui.Enabled = true
++	ProximityPromptService.Enabled = false -- sembunyikan prompt lain selama dialog
++	ContextActionService:BindActionAtPriority(
++		ACTION_NAME,
++		onAction,
++		false,
++		Enum.ContextActionPriority.High.Value,
++		Enum.KeyCode.E,
++		Enum.KeyCode.Return,
++		Enum.KeyCode.ButtonA
++	)
++	showLine(1)
++end)
++
++closeEvent.OnClientEvent:Connect(function(sessionId: any)
++	if active and sessionId == currentSessionId then
++		closeUi() -- ditutup server (pemain menjauh / mati); tidak melapor balik
++	end
++end)

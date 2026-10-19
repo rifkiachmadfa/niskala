@@ -8,6 +8,9 @@ Branch: main
 - (none) Repo belum berisi kode game.
 
 ## Incomplete systems
+- Dialog NPC (sebagian Phase 3): `src/ServerScriptService/Dialogue/*`, `src/StarterPlayer/StarterPlayerScripts/Dialogue/DialogueClient.client.lua`, `src/ReplicatedStorage/Shared/GameConfig.lua`. Status: kode ditulis, sintaks lolos, BELUM diuji di Studio. Belum ada: TrustService, GateController, Kepala Desa, flag dialog belum disimpan (Phase 8).
+  - Struktur Studio: ReplicatedStorage/Shared/GameConfig; ServerScriptService/Dialogue/{DialogueBootstrap (Script), DialogueService, DialogueTypes, NPCRegistry, Data/Bambang}; StarterPlayer/StarterPlayerScripts/Dialogue/DialogueClient (LocalScript). Remote dibuat runtime: ReplicatedStorage/DialogueRemotes/{Open,Close,Finish}.
+  - Tambah NPC baru: buat `Data/<NPC>` mengikuti `Data/Bambang`, lalu daftarkan di `NPCRegistry`.
 - Semua sistem gameplay belum dimulai.
 - Placeholder template (`CLAUDE.md`, `.ai/*`) sudah diisi dengan data game (perubahan belum di-commit).
 
