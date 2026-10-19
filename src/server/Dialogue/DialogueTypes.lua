@@ -28,6 +28,8 @@ export type NPCDefinition = {
 	displayName: string,
 	-- Nama Model NPC yang SUDAH ADA di Workspace (dicari rekursif, tidak dibuat/diubah).
 	modelName: string,
+	-- Nama part di dalam model yang jadi titik fokus kamera saat dialog (default "Head").
+	focusPartName: string?,
 	prompt: PromptSettings?,
 	conversations: { [string]: Conversation },
 	-- Mengembalikan key di `conversations` yang harus dimainkan untuk pemain ini.

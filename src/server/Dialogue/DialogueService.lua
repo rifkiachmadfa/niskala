@@ -150,7 +150,13 @@ end
 -- Memulai percakapan
 ------------------------------------------------------------------------
 
-local function startConversation(def: Types.NPCDefinition, anchor: BasePart, prompt: ProximityPrompt, player: Player)
+local function startConversation(
+	def: Types.NPCDefinition,
+	anchor: BasePart,
+	focus: BasePart,
+	prompt: ProximityPrompt,
+	player: Player
+)
 	if sessions[player] then
 		return -- sudah dalam dialog
 	end
@@ -206,6 +212,7 @@ local function startConversation(def: Types.NPCDefinition, anchor: BasePart, pro
 	remotes.Open:FireClient(player, {
 		sessionId = session.id,
 		npcName = def.displayName,
+		focus = focus, -- part tujuan kamera client (wajah NPC)
 		lines = lines,
 	})
 	monitorSession(player, session)
@@ -260,6 +267,16 @@ function DialogueService.RegisterNPC(def: Types.NPCDefinition): boolean
 		return false
 	end
 
+	-- Titik fokus kamera saat dialog (default: part bernama "Head").
+	local focus: BasePart = anchor
+	local focusName = def.focusPartName or "Head"
+	local focusInstance = model:FindFirstChild(focusName, true)
+	if focusInstance and focusInstance:IsA("BasePart") then
+		focus = focusInstance
+	else
+		warn(("[Dialogue] '%s': part fokus '%s' tidak ditemukan, kamera memakai %s"):format(def.id, focusName, anchor.Name))
+	end
+
 	-- Pakai prompt yang sudah ada jika ada; jangan menggandakan.
 	local prompt = model:FindFirstChildWhichIsA("ProximityPrompt", true)
 	if prompt then
@@ -282,7 +299,7 @@ function DialogueService.RegisterNPC(def: Types.NPCDefinition): boolean
 
 	npcs[def.id] = def
 	boundPrompt.Triggered:Connect(function(player: Player)
-		startConversation(def, anchor, boundPrompt, player)
+		startConversation(def, anchor, focus, boundPrompt, player)
 	end)
 	return true
 end

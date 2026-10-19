@@ -6,6 +6,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ContextActionService = game:GetService("ContextActionService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
 
 local localPlayer = Players.LocalPlayer
 local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -17,6 +19,7 @@ local finishEvent = remotes:WaitForChild("Finish") :: RemoteEvent
 
 local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameConfig") :: ModuleScript) :: any
 local CHARS_PER_SECOND: number = GameConfig.Dialogue.TypewriterCharsPerSecond
+local CAMERA_CFG = GameConfig.Dialogue.Camera
 
 local ACTION_NAME = "NPCDialogueAdvance"
 
@@ -129,6 +132,178 @@ local progressLabel = create("TextLabel", {
 }, panel)
 
 ------------------------------------------------------------------------
+-- Freeze gerak pemain (lewat kontrol bawaan Roblox; WalkSpeed tidak disentuh
+-- agar tidak bentrok dengan efek Thirsty di Phase 2)
+------------------------------------------------------------------------
+
+local controlsCache: any = nil
+local frozen = false
+
+local function getHumanoid(): Humanoid?
+	local character = localPlayer.Character
+	return character and character:FindFirstChildOfClass("Humanoid")
+end
+
+local function getControls(): any
+	if controlsCache then
+		return controlsCache
+	end
+	local ok, result = pcall(function()
+		local playerScripts = localPlayer:WaitForChild("PlayerScripts")
+		local playerModule = playerScripts:WaitForChild("PlayerModule", 5)
+		return (require(playerModule :: ModuleScript) :: any):GetControls()
+	end)
+	if ok and result then
+		controlsCache = result
+		return result
+	end
+	warn("[DialogueClient] Gagal mengambil kontrol PlayerModule: " .. tostring(result))
+	return nil
+end
+
+local function setFrozen(shouldFreeze: boolean)
+	if frozen == shouldFreeze then
+		return
+	end
+	local controls = getControls()
+	if not controls then
+		return
+	end
+	frozen = shouldFreeze
+	if shouldFreeze then
+		controls:Disable()
+		local humanoid = getHumanoid()
+		if humanoid then
+			humanoid:Move(Vector3.zero)
+		end
+	else
+		controls:Enable()
+	end
+end
+
+------------------------------------------------------------------------
+-- Kamera ke wajah NPC
+------------------------------------------------------------------------
+
+local cameraOverridden = false
+local savedCameraType: Enum.CameraType? = nil
+local savedCFrame: CFrame? = nil
+local pendingRestoreType: Enum.CameraType? = nil
+local cameraTween: Tween? = nil
+local cameraToken = 0
+
+local function cancelCameraTween()
+	if cameraTween then
+		cameraTween:Cancel()
+		cameraTween = nil
+	end
+end
+
+local function focusCameraOn(focus: BasePart)
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	cameraToken += 1
+	cancelCameraTween()
+
+	if not cameraOverridden then
+		cameraOverridden = true
+		savedCameraType = pendingRestoreType or camera.CameraType
+		savedCFrame = camera.CFrame
+		pendingRestoreType = nil
+	end
+
+	local character = localPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local focusPos = focus.Position
+
+	-- Arah dari NPC ke pemain (horizontal), digeser sedikit ke samping.
+	local flat = Vector3.zero
+	if root and root:IsA("BasePart") then
+		local delta = root.Position - focusPos
+		flat = Vector3.new(delta.X, 0, delta.Z)
+	end
+	if flat.Magnitude < 0.1 then
+		local look = focus.CFrame.LookVector
+		flat = Vector3.new(look.X, 0, look.Z)
+		if flat.Magnitude < 0.1 then
+			flat = Vector3.new(0, 0, 1)
+		end
+	end
+	local dir = CFrame.Angles(0, math.rad(CAMERA_CFG.SideAngle), 0):VectorToWorldSpace(flat.Unit)
+	local offset: Vector3 = dir * CAMERA_CFG.Distance + Vector3.new(0, CAMERA_CFG.Height, 0)
+	local desired = focusPos + offset
+
+	-- Jangan tembus dinding: jika ada penghalang, kamera dimajukan.
+	local ignore: { Instance } = {}
+	if character then
+		table.insert(ignore, character)
+	end
+	local npcModel = focus:FindFirstAncestorOfClass("Model")
+	if npcModel then
+		table.insert(ignore, npcModel)
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = ignore
+	local hit = Workspace:Raycast(focusPos, offset, params)
+	if hit then
+		local hitDistance = (hit.Position - focusPos).Magnitude
+		desired = focusPos + offset.Unit * math.max(hitDistance - 0.5, 1.5)
+	end
+
+	camera.CameraType = Enum.CameraType.Scriptable
+	local tween = TweenService:Create(
+		camera,
+		TweenInfo.new(CAMERA_CFG.TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ CFrame = CFrame.lookAt(desired, focusPos) }
+	)
+	cameraTween = tween
+	tween:Play()
+end
+
+local function restoreCamera(instant: boolean)
+	if not cameraOverridden then
+		return
+	end
+	cameraOverridden = false
+	cameraToken += 1
+	local token = cameraToken
+	cancelCameraTween()
+
+	local camera = Workspace.CurrentCamera
+	local previousType = savedCameraType or Enum.CameraType.Custom
+	local previousCFrame = savedCFrame
+	savedCameraType = nil
+	savedCFrame = nil
+	if not camera then
+		return
+	end
+
+	if instant or not previousCFrame then
+		camera.CameraType = previousType
+		return
+	end
+
+	pendingRestoreType = previousType
+	local tween = TweenService:Create(
+		camera,
+		TweenInfo.new(CAMERA_CFG.ReturnTweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ CFrame = previousCFrame }
+	)
+	cameraTween = tween
+	tween.Completed:Connect(function()
+		if cameraToken == token then
+			cameraTween = nil
+			pendingRestoreType = nil
+			camera.CameraType = previousType
+		end
+	end)
+	tween:Play()
+end
+
+------------------------------------------------------------------------
 -- State dialog
 ------------------------------------------------------------------------
 
@@ -180,6 +355,9 @@ local function closeUi()
 	gui.Enabled = false
 	ContextActionService:UnbindAction(ACTION_NAME)
 	ProximityPromptService.Enabled = true
+	setFrozen(false)
+	local humanoid = getHumanoid()
+	restoreCamera(humanoid == nil or humanoid.Health <= 0)
 end
 
 local function finish(skipped: boolean)
@@ -246,6 +424,12 @@ openEvent.OnClientEvent:Connect(function(payload: any)
 		Enum.KeyCode.ButtonA
 	)
 	showLine(1)
+
+	setFrozen(true)
+	local focus = payload.focus
+	if typeof(focus) == "Instance" and focus:IsA("BasePart") then
+		focusCameraOn(focus)
+	end
 end)
 
 closeEvent.OnClientEvent:Connect(function(sessionId: any)

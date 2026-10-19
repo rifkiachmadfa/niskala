@@ -9,6 +9,7 @@ local Bambang: Types.NPCDefinition = {
 	id = "Bambang",
 	displayName = "Bambang",
 	modelName = "Bambang",
+	focusPartName = "Head",
 	prompt = {
 		actionText = "Bicara",
 		maxActivationDistance = 10,
