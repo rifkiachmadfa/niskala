@@ -1,15 +1,18 @@
-# Roblox AI Starter Kit
+# MC Cari Harta Karun di Candi (niskala)
 
-Template reusable untuk project Roblox dengan AI (Claude Code / Studio MCP / Rojo).
+Game Roblox bergenre eksplorasi ringan, quest-driven, dan survival ringan. Ditulis dengan Luau.
+Repo ini memakai kerangka Roblox AI Starter Kit yang sudah disesuaikan dengan GDD v1.0.
 
 ## Isi
-- `CLAUDE.md`  : master prompt (isi semua {{PLACEHOLDER}}). Salin/biarkan di root repo. Bisa di-copy juga sebagai `AGENTS.md`.
-- `.ai/`       : project memory (GAME_CONTEXT, CURRENT_STATE, TASKS, BUGS, DECISIONS, CHANGELOG)
+- `CLAUDE.md`  : instruksi kerja utama untuk AI (peran, aturan Workspace, arsitektur, phase)
+- `.ai/`       : memori proyek (GAME_CONTEXT, CURRENT_STATE, TASKS, BUGS, DECISIONS, CHANGELOG)
 - `PROMPTS.md` : prompt pembuka sesi, handoff, task, bug
-- `CHECKLIST.md` : checklist placeholder + catatan adaptasi tipe game
+- `CHECKLIST.md` : checklist kesiapan proyek
 
-## Cara pakai
-1. Buat repo Git baru + setup Rojo (`default.project.json`).
-2. Salin `CLAUDE.md` dan folder `.ai/` ke root repo.
-3. Isi placeholder di `CLAUDE.md` dan lengkapi `.ai/GAME_CONTEXT.md`.
-4. Mulai sesi AI dengan prompt C1 di `PROMPTS.md` (audit Phase 0, jangan coding dulu).
+## Catatan penting
+- Map dan aset dunia sudah dibuat di Roblox Studio. Script hanya mengintegrasikan, tidak membangun ulang.
+- Dokumen acuan desain: `GDD KEL D ROBLLOX.docx` (belum ada di repo).
+- Status terkini: lihat `.ai/CURRENT_STATE.md`.
+
+## Cara mulai sesi AI
+Gunakan prompt C1 (sesi pertama) atau C2 (lanjutan) di `PROMPTS.md`.

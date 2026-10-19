@@ -5,6 +5,7 @@
 ```
 Baca CLAUDE.md dan seluruh isi .ai/.
 Jalankan PHASE 0: audit repository + inspeksi Studio (jika MCP tersedia).
+Ingat: map dan aset sudah ada; jangan dibuat ulang atau digandakan.
 Jangan coding dulu. Laporkan:
 1. Current phase
 2. Current implementation
@@ -31,7 +32,7 @@ TASK: {{deskripsi singkat}}
 Phase: {{nomor}}
 Acceptance criteria:
 - ...
-Ikuti format PLAN → CURRENT STATE → CHANGES → IMPLEMENTATION → TEST → RESULT → NEXT.
+Ikuti format Status → Analisis → Implementasi → Pengujian → Gate Phase.
 Update .ai/ setelah selesai. Jangan commit sebelum saya setujui.
 ```
 
