@@ -1,0 +1,127 @@
+diff --git a/src/client/Dialogue/DialogueClient.client.lua b/src/client/Dialogue/DialogueClient.client.lua
+index ad8f633..a774edf 100644
+--- a/src/client/Dialogue/DialogueClient.client.lua
++++ b/src/client/Dialogue/DialogueClient.client.lua
+@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
+ local ContextActionService = game:GetService("ContextActionService")
+ local ProximityPromptService = game:GetService("ProximityPromptService")
+ local TweenService = game:GetService("TweenService")
++local RunService = game:GetService("RunService")
+ local Workspace = game:GetService("Workspace")
+ 
+ local localPlayer = Players.LocalPlayer
+@@ -139,26 +140,36 @@ local progressLabel = create("TextLabel", {
+ 
+ local controlsCache: any = nil
+ local frozen = false
++local freezeMode: string? = nil -- "controls" (PlayerModule) atau "override" (fallback)
++local warnedNoControls = false
++local FREEZE_STEP = "NPCDialogueFreeze"
+ 
+ local function getHumanoid(): Humanoid?
+ 	local character = localPlayer.Character
+ 	return character and character:FindFirstChildOfClass("Humanoid")
+ end
+ 
+-local function getControls(): any
++-- TIDAK PERNAH yield. PlayerModule dicari apa adanya; jika belum ada, kembalikan nil.
++local function tryGetControls(): any
+ 	if controlsCache then
+ 		return controlsCache
+ 	end
++	local playerScripts = localPlayer:FindFirstChild("PlayerScripts")
++	local playerModule = playerScripts and playerScripts:FindFirstChild("PlayerModule")
++	if not playerModule or not playerModule:IsA("ModuleScript") then
++		return nil
++	end
+ 	local ok, result = pcall(function()
+-		local playerScripts = localPlayer:WaitForChild("PlayerScripts")
+-		local playerModule = playerScripts:WaitForChild("PlayerModule", 5)
+-		return (require(playerModule :: ModuleScript) :: any):GetControls()
++		return (require(playerModule) :: any):GetControls()
+ 	end)
+ 	if ok and result then
+ 		controlsCache = result
+ 		return result
+ 	end
+-	warn("[DialogueClient] Gagal mengambil kontrol PlayerModule: " .. tostring(result))
++	if not warnedNoControls then
++		warnedNoControls = true
++		warn("[DialogueClient] Gagal mengambil kontrol PlayerModule: " .. tostring(result))
++	end
+ 	return nil
+ end
+ 
+@@ -166,19 +177,38 @@ local function setFrozen(shouldFreeze: boolean)
+ 	if frozen == shouldFreeze then
+ 		return
+ 	end
+-	local controls = getControls()
+-	if not controls then
+-		return
+-	end
+ 	frozen = shouldFreeze
+ 	if shouldFreeze then
+-		controls:Disable()
++		local controls = tryGetControls()
++		if controls then
++			freezeMode = "controls"
++			controls:Disable()
++		else
++			-- Fallback: timpa input gerak tiap frame (setelah kontrol bawaan berjalan).
++			-- Tidak menyentuh WalkSpeed, jadi aman untuk efek Thirsty di Phase 2.
++			freezeMode = "override"
++			RunService:BindToRenderStep(FREEZE_STEP, Enum.RenderPriority.Input.Value + 1, function()
++				local humanoid = getHumanoid()
++				if humanoid then
++					humanoid:Move(Vector3.zero)
++					humanoid.Jump = false
++				end
++			end)
++		end
+ 		local humanoid = getHumanoid()
+ 		if humanoid then
+ 			humanoid:Move(Vector3.zero)
+ 		end
+ 	else
+-		controls:Enable()
++		if freezeMode == "controls" then
++			local controls = tryGetControls()
++			if controls then
++				controls:Enable()
++			end
++		elseif freezeMode == "override" then
++			RunService:UnbindFromRenderStep(FREEZE_STEP)
++		end
++		freezeMode = nil
+ 	end
+ end
+ 
+@@ -459,8 +489,8 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt,
+ 	pendingToken += 1
+ 	local myToken = pendingToken
+ 	ProximityPromptService.Enabled = false
+-	setFrozen(true)
+ 	pendingTween = focusCameraOn(focus)
++	setFrozen(true)
+ 	task.delay(OPEN_TIMEOUT, function()
+ 		if pending and pendingToken == myToken and not active then
+ 			cancelPending() -- server menolak / tidak membuka dialog
+@@ -543,6 +573,14 @@ closeEvent.OnClientEvent:Connect(function(sessionId: any)
+ 	end
+ end)
+ 
+--- Pemanasan: ambil kontrol PlayerModule sekarang agar setFrozen() tidak
+--- menunda (yield) saat dialog pertama dibuka.
+-task.spawn(getControls)
++-- Pemanasan di background: cache kontrol PlayerModule jika sudah tersedia.
++-- Tidak pernah memblokir dialog.
++task.spawn(function()
++	local deadline = os.clock() + 15
++	while not tryGetControls() and os.clock() < deadline do
++		task.wait(0.5)
++	end
++	if not controlsCache then
++		warn("[DialogueClient] PlayerModule tidak ditemukan; gerak dibekukan lewat fallback.")
++	end
++end)

@@ -49,3 +49,10 @@
 - Alternatif yang ditolak: DataStore sekarang (di luar scope tugas); modul config terpisah (risiko dua sumber kebenaran).
 - Dampak: Dialog intro Bambang diulang setiap pemain bergabung ulang sampai Phase 8.
 
+
+## DEC-008 — Hunger/Thirsty berkurang berdasarkan durasi BERJALAN (menyimpang dari GDD)
+- Tanggal: 2026-10-19
+- Konteks / masalah: GDD v1.0 menetapkan Hunger -1/8 dtk dan Thirsty -1/6 dtk berbasis waktu. Pemilik proyek meminta pengurangan hanya saat pemain berjalan, Thirsty lebih cepat dari Hunger, dan HP berkurang cepat jika keduanya kosong.
+- Keputusan: Instruksi terbaru pemilik menang (CLAUDE.md bagian 2). Angka GDD (8 dan 6 detik) dipakai sebagai "detik berjalan per poin". Deteksi jalan di server dari perpindahan horizontal HumanoidRootPart. HP berkurang saat Hunger DAN Thirsty = 0 (GDD: cukup Hunger = 0). Damage 2 HP / 2 dtk (nilai baru, bisa diubah di `GameConfig.Survival`).
+- Alternatif yang ditolak: Berbasis waktu murni (sesuai GDD, bukan permintaan); membaca `Humanoid.MoveDirection` (lebih mudah dimanipulasi client).
+- Dampak: GDD perlu diselaraskan oleh pemilik. Efek lambat Thirsty 0 (60%), regen HP, dan respawn di Pelabuhan BELUM dikerjakan (bagian Phase 2 lain).

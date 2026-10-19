@@ -11,3 +11,9 @@
 - Sistem terdampak: dokumentasi saja. Tidak ada kode gameplay, tidak ada aset Workspace.
 - File/skrip: CLAUDE.md, README.md, CHECKLIST.md, PROMPTS.md, .ai/GAME_CONTEXT.md, .ai/CURRENT_STATE.md, .ai/TASKS.md, .ai/DECISIONS.md, .ai/CHANGELOG.md
 - Hasil test: tidak berlaku (dokumen). Patch diverifikasi dengan `git apply --check` pada clone bersih.
+
+## 2026-10-19 (c) — Hunger/Thirsty berbasis durasi berjalan + HUD
+- Perubahan: PlayerStats (server) menyimpan Hunger/Thirsty per pemain, mengurangi hanya saat berjalan, Thirsty lebih cepat; HP berkurang berkala jika keduanya 0; reset ke 50 setelah mati. HUD dua bar (client) membaca Attribute pemain.
+- Sistem terdampak: baru (survival). `GameConfig` ditambah tabel `Survival`.
+- File: src/shared/GameConfig.lua, src/server/Stats/{PlayerStats,SurvivalLogic}.lua, src/server/Stats/StatsBootstrap.server.lua, src/client/Stats/StatsHud.client.lua
+- Hasil test: sintaks 5 file lolos luau-compile; logika murni (SurvivalLogic) lulus 15 tes di Luau CLI. BELUM diuji di Roblox Studio (deteksi jalan, HUD, kematian/respawn).

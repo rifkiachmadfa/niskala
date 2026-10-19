@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ContextActionService = game:GetService("ContextActionService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local localPlayer = Players.LocalPlayer
@@ -20,6 +21,7 @@ local finishEvent = remotes:WaitForChild("Finish") :: RemoteEvent
 local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameConfig") :: ModuleScript) :: any
 local CHARS_PER_SECOND: number = GameConfig.Dialogue.TypewriterCharsPerSecond
 local CAMERA_CFG = GameConfig.Dialogue.Camera
+local OPEN_TIMEOUT: number = GameConfig.Dialogue.OpenTimeout
 
 local ACTION_NAME = "NPCDialogueAdvance"
 
@@ -138,26 +140,36 @@ local progressLabel = create("TextLabel", {
 
 local controlsCache: any = nil
 local frozen = false
+local freezeMode: string? = nil -- "controls" (PlayerModule) atau "override" (fallback)
+local warnedNoControls = false
+local FREEZE_STEP = "NPCDialogueFreeze"
 
 local function getHumanoid(): Humanoid?
 	local character = localPlayer.Character
 	return character and character:FindFirstChildOfClass("Humanoid")
 end
 
-local function getControls(): any
+-- TIDAK PERNAH yield. PlayerModule dicari apa adanya; jika belum ada, kembalikan nil.
+local function tryGetControls(): any
 	if controlsCache then
 		return controlsCache
 	end
+	local playerScripts = localPlayer:FindFirstChild("PlayerScripts")
+	local playerModule = playerScripts and playerScripts:FindFirstChild("PlayerModule")
+	if not playerModule or not playerModule:IsA("ModuleScript") then
+		return nil
+	end
 	local ok, result = pcall(function()
-		local playerScripts = localPlayer:WaitForChild("PlayerScripts")
-		local playerModule = playerScripts:WaitForChild("PlayerModule", 5)
-		return (require(playerModule :: ModuleScript) :: any):GetControls()
+		return (require(playerModule) :: any):GetControls()
 	end)
 	if ok and result then
 		controlsCache = result
 		return result
 	end
-	warn("[DialogueClient] Gagal mengambil kontrol PlayerModule: " .. tostring(result))
+	if not warnedNoControls then
+		warnedNoControls = true
+		warn("[DialogueClient] Gagal mengambil kontrol PlayerModule: " .. tostring(result))
+	end
 	return nil
 end
 
@@ -165,19 +177,38 @@ local function setFrozen(shouldFreeze: boolean)
 	if frozen == shouldFreeze then
 		return
 	end
-	local controls = getControls()
-	if not controls then
-		return
-	end
 	frozen = shouldFreeze
 	if shouldFreeze then
-		controls:Disable()
+		local controls = tryGetControls()
+		if controls then
+			freezeMode = "controls"
+			controls:Disable()
+		else
+			-- Fallback: timpa input gerak tiap frame (setelah kontrol bawaan berjalan).
+			-- Tidak menyentuh WalkSpeed, jadi aman untuk efek Thirsty di Phase 2.
+			freezeMode = "override"
+			RunService:BindToRenderStep(FREEZE_STEP, Enum.RenderPriority.Input.Value + 1, function()
+				local humanoid = getHumanoid()
+				if humanoid then
+					humanoid:Move(Vector3.zero)
+					humanoid.Jump = false
+				end
+			end)
+		end
 		local humanoid = getHumanoid()
 		if humanoid then
 			humanoid:Move(Vector3.zero)
 		end
 	else
-		controls:Enable()
+		if freezeMode == "controls" then
+			local controls = tryGetControls()
+			if controls then
+				controls:Enable()
+			end
+		elseif freezeMode == "override" then
+			RunService:UnbindFromRenderStep(FREEZE_STEP)
+		end
+		freezeMode = nil
 	end
 end
 
@@ -199,10 +230,10 @@ local function cancelCameraTween()
 	end
 end
 
-local function focusCameraOn(focus: BasePart)
+local function focusCameraOn(focus: BasePart): Tween?
 	local camera = Workspace.CurrentCamera
 	if not camera then
-		return
+		return nil
 	end
 	cameraToken += 1
 	cancelCameraTween()
@@ -261,6 +292,7 @@ local function focusCameraOn(focus: BasePart)
 	)
 	cameraTween = tween
 	tween:Play()
+	return tween
 end
 
 local function restoreCamera(instant: boolean)
@@ -313,6 +345,8 @@ local currentLines: { DialogueLine } = {}
 local currentIndex = 0
 local typing = false
 local typeToken = 0
+local uiReady = false -- true setelah kamera terkunci dan panel dialog ditampilkan
+local revealToken = 0
 
 local function completeTyping()
 	typeToken += 1
@@ -350,6 +384,8 @@ end
 
 local function closeUi()
 	active = false
+	uiReady = false
+	revealToken += 1
 	typeToken += 1
 	typing = false
 	gui.Enabled = false
@@ -361,7 +397,7 @@ local function closeUi()
 end
 
 local function finish(skipped: boolean)
-	if not active then
+	if not active or not uiReady then
 		return
 	end
 	local sessionId = currentSessionId
@@ -370,7 +406,7 @@ local function finish(skipped: boolean)
 end
 
 local function advance()
-	if not active then
+	if not active or not uiReady then
 		return
 	end
 	if typing then
@@ -398,6 +434,71 @@ skipButton.Activated:Connect(function()
 end)
 
 ------------------------------------------------------------------------
+-- Respons instan: kunci kamera + gerak begitu prompt NPC ditekan di client,
+-- tanpa menunggu balasan server. Dialog tetap baru tampil saat server membuka sesi.
+------------------------------------------------------------------------
+
+local pending = false
+local pendingToken = 0
+local pendingTween: Tween? = nil
+
+local function cancelPending()
+	pendingToken += 1
+	if not pending then
+		return
+	end
+	pending = false
+	pendingTween = nil
+	if not active then
+		ProximityPromptService.Enabled = true
+		setFrozen(false)
+		restoreCamera(false)
+	end
+end
+
+local function resolveFocus(prompt: ProximityPrompt): BasePart?
+	local focusName = prompt:GetAttribute("DialogueFocusPart")
+	if type(focusName) ~= "string" then
+		return nil
+	end
+	local ancestor: Instance? = prompt.Parent
+	while ancestor and ancestor ~= Workspace do
+		if ancestor:IsA("Model") then
+			local found = ancestor:FindFirstChild(focusName, true)
+			if found and found:IsA("BasePart") then
+				return found
+			end
+		end
+		ancestor = ancestor.Parent
+	end
+	return nil
+end
+
+ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt, player: Player)
+	if player ~= localPlayer or active or pending then
+		return
+	end
+	if prompt:GetAttribute("DialogueNPC") == nil then
+		return
+	end
+	local focus = resolveFocus(prompt)
+	if not focus then
+		return -- fokus belum tersedia di client (mis. belum ter-stream); pakai alur normal
+	end
+	pending = true
+	pendingToken += 1
+	local myToken = pendingToken
+	ProximityPromptService.Enabled = false
+	pendingTween = focusCameraOn(focus)
+	setFrozen(true)
+	task.delay(OPEN_TIMEOUT, function()
+		if pending and pendingToken == myToken and not active then
+			cancelPending() -- server menolak / tidak membuka dialog
+		end
+	end)
+end)
+
+------------------------------------------------------------------------
 -- Event dari server
 ------------------------------------------------------------------------
 
@@ -412,8 +513,14 @@ openEvent.OnClientEvent:Connect(function(payload: any)
 	currentSessionId = payload.sessionId
 	currentLines = payload.lines
 	active = true
-	gui.Enabled = true
+	uiReady = false
+	revealToken += 1
+	local myReveal = revealToken
+	local mySession = payload.sessionId
+
 	ProximityPromptService.Enabled = false -- sembunyikan prompt lain selama dialog
+	-- Bind sekarang (Sink) agar tombol E saat kamera bergerak tidak memicu hal lain;
+	-- advance() sendiri mengabaikan input sampai uiReady = true.
 	ContextActionService:BindActionAtPriority(
 		ACTION_NAME,
 		onAction,
@@ -423,17 +530,57 @@ openEvent.OnClientEvent:Connect(function(payload: any)
 		Enum.KeyCode.Return,
 		Enum.KeyCode.ButtonA
 	)
-	showLine(1)
 
+	-- 1) Kunci kamera dan gerak DULU. Panel dialog baru muncul setelah kamera sampai.
 	setFrozen(true)
+	local tween: Tween? = nil
 	local focus = payload.focus
-	if typeof(focus) == "Instance" and focus:IsA("BasePart") then
-		focusCameraOn(focus)
+	if pending then
+		-- Kamera sudah dikunci saat prompt ditekan; lanjutkan tween yang berjalan.
+		pending = false
+		pendingToken += 1
+		tween = pendingTween
+		pendingTween = nil
+		if tween and tween.PlaybackState ~= Enum.PlaybackState.Playing then
+			tween = nil -- sudah sampai: dialog langsung tampil
+		end
+	elseif typeof(focus) == "Instance" and focus:IsA("BasePart") then
+		tween = focusCameraOn(focus)
+	end
+
+	-- 2) Tampilkan dialog (hanya sekali, dan hanya jika sesi masih yang sama).
+	local function reveal()
+		if not active or uiReady or revealToken ~= myReveal or currentSessionId ~= mySession then
+			return
+		end
+		uiReady = true
+		gui.Enabled = true
+		showLine(1)
+	end
+
+	if tween then
+		tween.Completed:Once(reveal)
+		-- Pengaman: jika Completed tidak terpanggil, dialog tetap muncul.
+		task.delay(CAMERA_CFG.TweenTime + CAMERA_CFG.RevealTimeoutPadding, reveal)
+	else
+		reveal() -- tanpa kamera (focus/camera tidak ada): tampilkan langsung
 	end
 end)
 
 closeEvent.OnClientEvent:Connect(function(sessionId: any)
 	if active and sessionId == currentSessionId then
 		closeUi() -- ditutup server (pemain menjauh / mati); tidak melapor balik
+	end
+end)
+
+-- Pemanasan di background: cache kontrol PlayerModule jika sudah tersedia.
+-- Tidak pernah memblokir dialog.
+task.spawn(function()
+	local deadline = os.clock() + 15
+	while not tryGetControls() and os.clock() < deadline do
+		task.wait(0.5)
+	end
+	if not controlsCache then
+		warn("[DialogueClient] PlayerModule tidak ditemukan; gerak dibekukan lewat fallback.")
 	end
 end)

@@ -297,6 +297,17 @@ function DialogueService.RegisterNPC(def: Types.NPCDefinition): boolean
 	end
 	local boundPrompt = prompt :: ProximityPrompt
 
+	-- Prompt dengan HoldDuration > 0 membuat dialog baru mulai setelah tombol ditahan.
+	-- Seragamkan lewat GameConfig (hanya properti interaksi, bukan visual).
+	local wantedHold = GameConfig.Dialogue.PromptHoldDuration
+	if type(wantedHold) == "number" and boundPrompt.HoldDuration ~= wantedHold then
+		print(("[Dialogue] '%s': HoldDuration prompt %.2f -> %.2f"):format(def.id, boundPrompt.HoldDuration, wantedHold))
+		boundPrompt.HoldDuration = wantedHold
+	end
+	-- Penanda untuk client agar bisa mengunci kamera seketika saat prompt ditekan.
+	boundPrompt:SetAttribute("DialogueNPC", def.id)
+	boundPrompt:SetAttribute("DialogueFocusPart", focus.Name)
+
 	npcs[def.id] = def
 	boundPrompt.Triggered:Connect(function(player: Player)
 		startConversation(def, anchor, focus, boundPrompt, player)
