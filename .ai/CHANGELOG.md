@@ -27,3 +27,9 @@
 - Perubahan: Hunger 1.8 dtk/poin, Thirsty 0.9 dtk/poin; opsi DrainOnlyWhileWalking; HUD Hunger/Thirsty kiri atas tanpa angka, HP bar tengah bawah (hijau/oranye<=50/merah<=25).
 - File: src/shared/GameConfig.lua, src/server/Stats/PlayerStats.lua, src/client/Stats/StatsHud.client.lua, .ai/DECISIONS.md
 - Hasil test: sintaks lolos, simulasi laju lulus. BELUM diuji di Studio.
+
+## 2026-10-20 — Shop NPC Jokok (GUI) + CurrencyService dummy
+- Perubahan: Shop NPC berbasis GUI. Pembelian memotong koin (dummy) dan memberi Tool ke Backpack (satu Tool per jenis, Attribute Quantity). Validasi server: sesi toko, jarak, vendor/item, harga, saldo, cooldown, batas stack.
+- Sistem terdampak: baru (shop, economy). `GameConfig` ditambah `Items` dan `Shop`.
+- File: src/shared/GameConfig.lua, src/server/Economy/CurrencyService.lua, src/server/Shop/{ShopService,ShopBootstrap.server}.lua, src/client/Shop/ShopClient.client.lua
+- Hasil test: sintaks 5 file lolos luau-compile; logika validasi saldo lulus tes Luau CLI. BELUM diuji di Roblox Studio (model Jokok, prompt, GUI, Backpack).

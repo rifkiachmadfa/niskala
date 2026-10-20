@@ -37,3 +37,7 @@ Branch: main
 | Remote | Belum ada |
 | UI | Belum terverifikasi |
 | Data/Save | Belum ada |
+
+## Update 2026-10-20
+- Shop Jokok: kode ditulis (src/server/Shop, src/server/Economy, src/client/Shop), sintaks lolos, BELUM diuji di Studio. Butuh: Model NPC bernama sesuai `GameConfig.Shop.Vendors.Jokok.modelName` ("Jokok", belum diverifikasi).
+- Catatan: info "BLOCKER default.project.json belum ada" di atas sudah usang; file kini ada (src/server -> ServerScriptService.Server, src/client -> StarterPlayerScripts.Client, src/shared -> ReplicatedStorage.Shared).

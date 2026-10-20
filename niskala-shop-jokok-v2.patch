@@ -1,11 +1,11 @@
 diff --git a/.ai/CHANGELOG.md b/.ai/CHANGELOG.md
-index c49b6af..19305e8 100644
+index 067dfdb..5d18947 100644
 --- a/.ai/CHANGELOG.md
 +++ b/.ai/CHANGELOG.md
-@@ -17,3 +17,9 @@
- - Sistem terdampak: baru (survival). `GameConfig` ditambah tabel `Survival`.
- - File: src/shared/GameConfig.lua, src/server/Stats/{PlayerStats,SurvivalLogic}.lua, src/server/Stats/StatsBootstrap.server.lua, src/client/Stats/StatsHud.client.lua
- - Hasil test: sintaks 5 file lolos luau-compile; logika murni (SurvivalLogic) lulus 15 tes di Luau CLI. BELUM diuji di Roblox Studio (deteksi jalan, HUD, kematian/respawn).
+@@ -27,3 +27,9 @@
+ - Perubahan: Hunger 1.8 dtk/poin, Thirsty 0.9 dtk/poin; opsi DrainOnlyWhileWalking; HUD Hunger/Thirsty kiri atas tanpa angka, HP bar tengah bawah (hijau/oranye<=50/merah<=25).
+ - File: src/shared/GameConfig.lua, src/server/Stats/PlayerStats.lua, src/client/Stats/StatsHud.client.lua, .ai/DECISIONS.md
+ - Hasil test: sintaks lolos, simulasi laju lulus. BELUM diuji di Studio.
 +
 +## 2026-10-20 — Shop NPC Jokok (GUI) + CurrencyService dummy
 +- Perubahan: Shop NPC berbasis GUI. Pembelian memotong koin (dummy) dan memberi Tool ke Backpack (satu Tool per jenis, Attribute Quantity). Validasi server: sesi toko, jarak, vendor/item, harga, saldo, cooldown, batas stack.
@@ -25,15 +25,15 @@ index 4753bb2..15bef24 100644
 +- Shop Jokok: kode ditulis (src/server/Shop, src/server/Economy, src/client/Shop), sintaks lolos, BELUM diuji di Studio. Butuh: Model NPC bernama sesuai `GameConfig.Shop.Vendors.Jokok.modelName` ("Jokok", belum diverifikasi).
 +- Catatan: info "BLOCKER default.project.json belum ada" di atas sudah usang; file kini ada (src/server -> ServerScriptService.Server, src/client -> StarterPlayerScripts.Client, src/shared -> ReplicatedStorage.Shared).
 diff --git a/.ai/DECISIONS.md b/.ai/DECISIONS.md
-index c480441..d4cd1ed 100644
+index 1c7b1ec..7dd9273 100644
 --- a/.ai/DECISIONS.md
 +++ b/.ai/DECISIONS.md
-@@ -56,3 +56,8 @@
- - Keputusan: Instruksi terbaru pemilik menang (CLAUDE.md bagian 2). Angka GDD (8 dan 6 detik) dipakai sebagai "detik berjalan per poin". Deteksi jalan di server dari perpindahan horizontal HumanoidRootPart. HP berkurang saat Hunger DAN Thirsty = 0 (GDD: cukup Hunger = 0). Damage 2 HP / 2 dtk (nilai baru, bisa diubah di `GameConfig.Survival`).
- - Alternatif yang ditolak: Berbasis waktu murni (sesuai GDD, bukan permintaan); membaca `Humanoid.MoveDirection` (lebih mudah dimanipulasi client).
- - Dampak: GDD perlu diselaraskan oleh pemilik. Efek lambat Thirsty 0 (60%), regen HP, dan respawn di Pelabuhan BELUM dikerjakan (bagian Phase 2 lain).
+@@ -70,3 +70,8 @@
+ - Keputusan: Dibaca sebagai 1 bar penuh habis dalam 3:00 (Hunger) dan 1:30 (Thirsty): 1.8 dan 0.9 dtk/poin. Menggantikan DEC-009. Tambah `DrainOnlyWhileWalking` (default true) agar mode berbasis waktu bisa dipilih tanpa ubah kode. HP bar tengah bawah: hijau, oranye saat HP <= 50, merah saat HP <= 25 (nilai di config).
+ - Alternatif yang ditolak: 1 poin per 3 menit (bar penuh habis 5 jam, tidak masuk akal untuk gameplay).
+ - Dampak: Menyimpang jauh dari GDD (8 dtk/6 dtk per poin); GDD perlu diselaraskan. Starvation (kedua bar 0) dimulai pada 3:00.
 +
-+## DEC-009 — CurrencyService dummy (memori) sebagai pemilik tunggal koin
++## DEC-011 — CurrencyService dummy (memori) sebagai pemilik tunggal koin
 +- Tanggal: 2026-10-20
 +- Keputusan: Saldo Koin di `CurrencyService` (memori, mulai dari `GameConfig.StartingCoins`), dicerminkan ke Attribute `Coins`. API Get/Add/Spend dipertahankan saat Save (Phase 8) ditambah.
 +- Dampak: Saldo reset saat pemain keluar. Roti Gandum dan Ikan Goreng bukan item GDD (harga placeholder); Backpack Roblox kosong saat respawn sampai InventoryService/Save ada.
@@ -802,11 +802,11 @@ index 0000000..578984d
 +
 +return ShopService
 diff --git a/src/shared/GameConfig.lua b/src/shared/GameConfig.lua
-index 7486bad..4306cfc 100644
+index f47bae2..5dbd6d0 100644
 --- a/src/shared/GameConfig.lua
 +++ b/src/shared/GameConfig.lua
-@@ -34,6 +34,54 @@ local GameConfig = {
- 		StarvationDamageInterval = 2,
+@@ -41,6 +41,54 @@ local GameConfig = {
+ 		HpRedAtOrBelow = 25,
  	},
  
 +	-- Shop (Phase 2 dasar). Item & harga di bawah adalah data awal untuk tes sistem.

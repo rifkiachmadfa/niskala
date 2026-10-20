@@ -41,6 +41,54 @@ local GameConfig = {
 		HpRedAtOrBelow = 25,
 	},
 
+	-- Shop (Phase 2 dasar). Item & harga di bawah adalah data awal untuk tes sistem.
+	-- Air Mineral mengikuti GDD (5 Koin, Thirsty +35). Roti Gandum dan Ikan Goreng
+	-- BUKAN dari GDD: harga/efek placeholder, perlu disetujui pemilik.
+	-- Field hunger/thirsty belum dipakai (sistem konsumsi item belum dibuat).
+	Items = {
+		RotiGandum = {
+			name = "Roti Gandum",
+			category = "Makanan",
+			price = 10,
+			hunger = 25,
+			description = "Roti gandum hangat, mengenyangkan.",
+		},
+		IkanGoreng = {
+			name = "Ikan Goreng",
+			category = "Makanan",
+			price = 15,
+			hunger = 35,
+			description = "Ikan segar hasil tangkapan nelayan, digoreng renyah.",
+		},
+		AirMineral = {
+			name = "Air Mineral",
+			category = "Minuman",
+			price = 5,
+			thirsty = 35,
+			description = "Air mineral botol yang menyegarkan.",
+		},
+	},
+
+	Shop = {
+		-- Jarak maksimum pemain ke NPC penjual saat membeli = MaxActivationDistance
+		-- prompt + padding ini (stud). Dicek server pada setiap pembelian.
+		ClosePadding = 8,
+		DistanceCheckInterval = 0.25,
+		BuyCooldown = 0.25, -- detik antar pembelian per pemain
+		MaxStack = 20, -- maksimum jumlah satu jenis item di Backpack
+
+		-- Penjual: key = id vendor. modelName = nama Model NPC yang SUDAH ADA di Workspace.
+		Vendors = {
+			Jokok = {
+				modelName = "jokok",
+				displayName = "Jokok",
+				title = "Toko Jokok",
+				prompt = { actionText = "Belanja", maxActivationDistance = 10 },
+				itemIds = { "RotiGandum", "IkanGoreng", "AirMineral" },
+			},
+		},
+	},
+
 	Dialogue = {
 		-- Dialog tertutup otomatis jika pemain lebih jauh dari
 		-- (MaxActivationDistance prompt + padding ini) dari NPC.

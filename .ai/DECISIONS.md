@@ -70,3 +70,8 @@
 - Keputusan: Dibaca sebagai 1 bar penuh habis dalam 3:00 (Hunger) dan 1:30 (Thirsty): 1.8 dan 0.9 dtk/poin. Menggantikan DEC-009. Tambah `DrainOnlyWhileWalking` (default true) agar mode berbasis waktu bisa dipilih tanpa ubah kode. HP bar tengah bawah: hijau, oranye saat HP <= 50, merah saat HP <= 25 (nilai di config).
 - Alternatif yang ditolak: 1 poin per 3 menit (bar penuh habis 5 jam, tidak masuk akal untuk gameplay).
 - Dampak: Menyimpang jauh dari GDD (8 dtk/6 dtk per poin); GDD perlu diselaraskan. Starvation (kedua bar 0) dimulai pada 3:00.
+
+## DEC-011 — CurrencyService dummy (memori) sebagai pemilik tunggal koin
+- Tanggal: 2026-10-20
+- Keputusan: Saldo Koin di `CurrencyService` (memori, mulai dari `GameConfig.StartingCoins`), dicerminkan ke Attribute `Coins`. API Get/Add/Spend dipertahankan saat Save (Phase 8) ditambah.
+- Dampak: Saldo reset saat pemain keluar. Roti Gandum dan Ikan Goreng bukan item GDD (harga placeholder); Backpack Roblox kosong saat respawn sampai InventoryService/Save ada.
