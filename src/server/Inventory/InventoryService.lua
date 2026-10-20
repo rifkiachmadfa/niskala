@@ -101,13 +101,74 @@ function InventoryService.Inspect(tool: Tool): { string }
 	return problems
 end
 
+local promoteWarned: { [string]: boolean } = {}
+
+-- Hanya pada KLON runtime: jika Tool tidak punya Handle valid tetapi berisi part visual
+-- (mis. MeshPart bernama lain, atau part di dalam Model), jadikan part terbesar sebagai
+-- "Handle" dan las part lain ke Handle (Weld dengan offset eksplisit) agar ikut terpegang.
+-- Anchored dimatikan (Handle anchored akan membekukan karakter) dan CanCollide dimatikan.
+-- Mengembalikan true jika Handle berhasil dibuat.
+local function promoteHandle(tool: Tool, itemId: string): boolean
+	local parts: { BasePart } = {}
+	for _, descendant in tool:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			table.insert(parts, descendant)
+		end
+	end
+	if #parts == 0 then
+		return false
+	end
+
+	local handle = parts[1]
+	local bestVolume = -1
+	for _, part in parts do
+		local volume = part.Size.X * part.Size.Y * part.Size.Z
+		if volume > bestVolume then
+			bestVolume = volume
+			handle = part
+		end
+	end
+
+	-- Objek lain bernama "Handle" (bukan part) disingkirkan namanya agar tidak bentrok.
+	local existing = tool:FindFirstChild("Handle")
+	if existing and existing ~= handle then
+		existing.Name = "Handle_Asli"
+	end
+
+	for _, part in parts do
+		part.Anchored = false
+		part.CanCollide = false
+		if part ~= handle then
+			local weld = Instance.new("Weld")
+			weld.Part0 = handle
+			weld.Part1 = part
+			weld.C0 = handle.CFrame:ToObjectSpace(part.CFrame)
+			weld.C1 = CFrame.new()
+			weld.Parent = part
+		end
+	end
+	handle.Name = "Handle"
+	handle.Parent = tool
+	tool.RequiresHandle = true
+
+	if not promoteWarned[itemId] then
+		promoteWarned[itemId] = true
+		warn(
+			("[Inventory] Tool item '%s' tidak punya Handle valid; part terbesar dijadikan Handle di klon. "
+				.. "Perbaiki permanen di Studio: beri nama 'Handle' pada part utama langsung di dalam Tool."):format(
+				itemId
+			)
+		)
+	end
+	return true
+end
+
 -- Hanya pada KLON runtime (bukan aset): pastikan Tool bisa dipegang dan diaktifkan.
---   * Tanpa Handle valid, RequiresHandle = true membuat Tool tidak bisa di-equip sama
---     sekali, sehingga Activated tidak pernah terpicu. Dipaksa false agar tetap bisa dipakai
---     (tampilan di tangan tetap butuh Handle yang benar di aset; lihat peringatan di Output).
+--   * Tanpa Handle valid: coba promoteHandle agar terlihat di tangan. Jika tidak ada part
+--     sama sekali, RequiresHandle = false agar tetap bisa diklik (tidak terlihat di tangan).
 --   * Enabled = false membuat Activated tidak terpicu; consumable harus Enabled.
-local function ensureUsable(tool: Tool)
-	if tool.RequiresHandle and not getHandle(tool) then
+local function ensureUsable(tool: Tool, itemId: string)
+	if not getHandle(tool) and not promoteHandle(tool, itemId) then
 		tool.RequiresHandle = false
 	end
 	tool.Enabled = true
@@ -133,7 +194,7 @@ function InventoryService.Give(player: Player, itemId: string, template: Tool): 
 	end
 	local tool = template:Clone()
 	tool.CanBeDropped = false -- jumlah ada di Attribute; tool yang dibuang akan merusak stack
-	ensureUsable(tool)
+	ensureUsable(tool, itemId)
 	tool:SetAttribute("ItemId", itemId)
 	setQuantity(tool, itemId, 1)
 	tool.Parent = backpack

@@ -55,3 +55,9 @@
 - Perubahan: `InventoryService.Inspect` memeriksa template (Handle, Transparency, ukuran, Enabled) dan ShopService melaporkannya di Output saat startup. Klon runtime dipaksa `Enabled = true` dan `RequiresHandle = false` jika tidak punya Handle valid (aset tidak diubah).
 - File: src/server/Inventory/InventoryService.lua, src/server/Shop/ShopService.lua
 - Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.
+
+## 2026-10-20 (f) — Tool tanpa Handle valid: part visual dijadikan Handle di klon
+- Masalah: Roti Gandum bisa dimakan dan jumlahnya tampil, tetapi tidak terlihat di tangan karakter (Tool tanpa Handle valid; klon sebelumnya hanya dipaksa RequiresHandle=false).
+- Perubahan: `InventoryService` menjadikan part terbesar di dalam klon sebagai "Handle" (part lain di-Weld, Anchored/CanCollide dimatikan) sehingga terpegang. Aset ServerStorage tidak diubah. Peringatan sekali per item muncul di Output.
+- File: src/server/Inventory/InventoryService.lua
+- Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio (posisi/orientasi di tangan bergantung Grip aset).

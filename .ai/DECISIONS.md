@@ -98,3 +98,9 @@
 - Tanggal: 2026-10-20
 - Keputusan: Perbaikan hanya pada klon runtime (Enabled=true; RequiresHandle=false bila tanpa Handle valid) plus peringatan Output yang menunjuk masalah aset. Aset di ServerStorage tidak diubah (aturan Workspace/aset).
 - Dampak: Tool tanpa Handle bisa dipakai tetapi tetap tidak tampil di tangan; itu hanya bisa diperbaiki di aset (Studio).
+
+## DEC-016 — Auto-promosi Handle pada klon Tool
+- Tanggal: 2026-10-20
+- Keputusan: Bila template tidak punya Handle BasePart, klon memakai part terbesar sebagai Handle (rename + Weld part lain). Hanya klon runtime; aset tidak disentuh.
+- Alternatif yang ditolak: Mengubah aset di ServerStorage (dilarang tanpa izin); membuat model pengganti.
+- Dampak: Perbaikan permanen tetap di aset (beri nama Handle). Posisi/orientasi di tangan mengikuti Grip aset; tuning Grip dilakukan di Studio.
