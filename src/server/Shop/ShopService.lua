@@ -339,13 +339,20 @@ local function validateTools()
 	for _, vendor in CFG.Vendors do
 		for _, itemId in vendor.itemIds do
 			local def = GameConfig.Items[itemId]
-			if def and not getToolTemplate(def) then
-				warn(("[Shop] Tool '%s' (item %s) tidak ada/bukan Tool di ServerStorage/%s. Isi folder: %s"):format(
-					tostring(def.toolName),
-					itemId,
-					CFG.ToolsFolderName,
-					table.concat(available, ", ")
-				))
+			if def then
+				local template = getToolTemplate(def)
+				if not template then
+					warn(("[Shop] Tool '%s' (item %s) tidak ada/bukan Tool di ServerStorage/%s. Isi folder: %s"):format(
+						tostring(def.toolName),
+						itemId,
+						CFG.ToolsFolderName,
+						table.concat(available, ", ")
+					))
+				else
+					for _, problem in InventoryService.Inspect(template) do
+						warn(("[Shop] Tool '%s' (item %s): %s"):format(tostring(def.toolName), itemId, problem))
+					end
+				end
 			end
 		end
 	end

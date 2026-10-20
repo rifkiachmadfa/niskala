@@ -93,3 +93,8 @@
 - Keputusan: `InventoryService` memiliki Give/ConsumeOne/GetQuantity (Attribute `ItemId` + `Quantity`). `ShopService` dan `ConsumableService` memakainya. Konsumsi dipicu `Tool.Activated` di server tanpa Remote. Efek dari `GameConfig.Items`. `Consumable.BlockWhenFull = true`: item tidak terpakai jika status yang dituju sudah penuh.
 - Alternatif yang ditolak: Remote konsumsi dari client (permukaan eksploit lebih besar); logika jumlah di dua modul (duplikasi).
 - Dampak: Efek angka (+20/+15/+25) menyimpang dari GDD untuk Air Mineral (+35); GDD perlu diselaraskan. Tidak ada notifikasi saat konsumsi diblokir karena status penuh. Tool tanpa Handle/aksi klik tetap memicu Activated saat dipegang.
+
+## DEC-015 — Klon Tool dipaksa usable; aset tidak diubah
+- Tanggal: 2026-10-20
+- Keputusan: Perbaikan hanya pada klon runtime (Enabled=true; RequiresHandle=false bila tanpa Handle valid) plus peringatan Output yang menunjuk masalah aset. Aset di ServerStorage tidak diubah (aturan Workspace/aset).
+- Dampak: Tool tanpa Handle bisa dipakai tetapi tetap tidak tampil di tangan; itu hanya bisa diperbaiki di aset (Studio).

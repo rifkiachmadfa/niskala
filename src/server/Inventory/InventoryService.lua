@@ -57,6 +57,62 @@ function InventoryService.GetQuantity(player: Player, itemId: string): number
 	return if tool then InventoryService.GetToolQuantity(tool) else 0
 end
 
+local function getHandle(tool: Tool): BasePart?
+	local handle = tool:FindFirstChild("Handle")
+	if handle and handle:IsA("BasePart") then
+		return handle
+	end
+	return nil
+end
+
+-- Memeriksa template Tool dan mengembalikan daftar masalah (kosong = aman).
+-- Hanya MEMBACA; template di ServerStorage tidak pernah diubah.
+function InventoryService.Inspect(tool: Tool): { string }
+	local problems = {}
+
+	local raw = tool:FindFirstChild("Handle")
+	if not raw then
+		local parts = {}
+		for _, child in tool:GetChildren() do
+			if child:IsA("BasePart") then
+				table.insert(parts, child.Name)
+			end
+		end
+		table.insert(
+			problems,
+			("tidak punya child bernama 'Handle'. Part langsung di dalam Tool: %s"):format(
+				if #parts > 0 then table.concat(parts, ", ") else "(tidak ada)"
+			)
+		)
+	elseif not raw:IsA("BasePart") then
+		table.insert(problems, ("'Handle' berjenis %s, harus Part/MeshPart (BasePart)"):format(raw.ClassName))
+	else
+		if raw.Transparency >= 1 then
+			table.insert(problems, "Handle Transparency = 1 (tidak terlihat)")
+		end
+		if raw.Size.Magnitude < 0.2 then
+			table.insert(problems, "ukuran Handle sangat kecil")
+		end
+	end
+
+	if not tool.Enabled then
+		table.insert(problems, "properti Enabled = false (tool tidak bisa dipakai/diklik)")
+	end
+	return problems
+end
+
+-- Hanya pada KLON runtime (bukan aset): pastikan Tool bisa dipegang dan diaktifkan.
+--   * Tanpa Handle valid, RequiresHandle = true membuat Tool tidak bisa di-equip sama
+--     sekali, sehingga Activated tidak pernah terpicu. Dipaksa false agar tetap bisa dipakai
+--     (tampilan di tangan tetap butuh Handle yang benar di aset; lihat peringatan di Output).
+--   * Enabled = false membuat Activated tidak terpicu; consumable harus Enabled.
+local function ensureUsable(tool: Tool)
+	if tool.RequiresHandle and not getHandle(tool) then
+		tool.RequiresHandle = false
+	end
+	tool.Enabled = true
+end
+
 -- Menambah satu item. template = Tool di ServerStorage (hanya di-Clone, tidak diubah).
 -- Mengembalikan jumlah baru, atau nil jika item/Backpack tidak valid.
 function InventoryService.Give(player: Player, itemId: string, template: Tool): number?
@@ -77,6 +133,7 @@ function InventoryService.Give(player: Player, itemId: string, template: Tool): 
 	end
 	local tool = template:Clone()
 	tool.CanBeDropped = false -- jumlah ada di Attribute; tool yang dibuang akan merusak stack
+	ensureUsable(tool)
 	tool:SetAttribute("ItemId", itemId)
 	setQuantity(tool, itemId, 1)
 	tool.Parent = backpack

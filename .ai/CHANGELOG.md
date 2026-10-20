@@ -49,3 +49,9 @@
 - Sistem terdampak: baru (konsumsi), refactor kecil Shop. `GameConfig` ditambah `Consumable`; nilai `Items.*.hunger/thirsty` diubah.
 - File: src/server/Inventory/{InventoryService,ConsumableService,InventoryBootstrap.server}.lua, src/server/Shop/ShopService.lua, src/shared/GameConfig.lua
 - Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.
+
+## 2026-10-20 (e) — Diagnosa dan pengamanan Tool item (kasus Roti Gandum tidak bisa dipakai)
+- Masalah: Roti Gandum tidak bisa dipakai dan tidak terlihat di tangan, sedangkan Ikan Goreng/Air Mineral normal. Kode klon/konsumsi sama untuk ketiganya, jadi penyebab dicurigai pada aset Tool (Handle tidak valid, Enabled=false). Belum terverifikasi: aset Studio tidak terlihat dari repo.
+- Perubahan: `InventoryService.Inspect` memeriksa template (Handle, Transparency, ukuran, Enabled) dan ShopService melaporkannya di Output saat startup. Klon runtime dipaksa `Enabled = true` dan `RequiresHandle = false` jika tidak punya Handle valid (aset tidak diubah).
+- File: src/server/Inventory/InventoryService.lua, src/server/Shop/ShopService.lua
+- Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.
