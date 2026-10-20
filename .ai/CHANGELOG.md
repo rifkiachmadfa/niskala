@@ -43,3 +43,9 @@
 - Perubahan: Nama Tool klon di Backpack menampilkan jumlah ("Ikan Goreng x2"), diperbarui setiap pembelian. Attribute `Quantity` tetap sumber kebenaran; identitas item lewat Attribute `ItemId`.
 - File: src/server/Shop/ShopService.lua
 - Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.
+
+## 2026-10-20 (d) — Konsumsi item dari Backpack
+- Perubahan: Klik/tap Tool item (Tool.Activated) menambah Hunger/Thirsty lewat PlayerStats.Add dan mengurangi jumlah di Backpack (Tool hilang jika habis). Efek: Ikan Goreng +20 Hunger, Roti Gandum +15 Hunger, Air Mineral +25 Thirsty. Logika inventori Tool dipindah dari ShopService ke InventoryService (satu pemilik).
+- Sistem terdampak: baru (konsumsi), refactor kecil Shop. `GameConfig` ditambah `Consumable`; nilai `Items.*.hunger/thirsty` diubah.
+- File: src/server/Inventory/{InventoryService,ConsumableService,InventoryBootstrap.server}.lua, src/server/Shop/ShopService.lua, src/shared/GameConfig.lua
+- Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.

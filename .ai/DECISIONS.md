@@ -87,3 +87,9 @@
 - Keputusan: `Tool.Name` klon diubah menjadi "<Nama> x<jumlah>" agar jumlah terlihat di slot Backpack bawaan. Logika (cari item, konsumsi) memakai Attribute `ItemId` dan `Quantity`, bukan Name.
 - Alternatif yang ditolak: UI Backpack kustom (di luar permintaan; redesign UI butuh persetujuan).
 - Dampak: Script di dalam Tool yang membaca `script.Parent.Name` akan melihat nama berformat. Jika Tool punya TextureId (ikon), slot menampilkan ikon dan teks jumlah terlihat saat hover/di daftar backpack.
+
+## DEC-014 — InventoryService pemilik inventori Tool; konsumsi lewat Tool.Activated di server
+- Tanggal: 2026-10-20
+- Keputusan: `InventoryService` memiliki Give/ConsumeOne/GetQuantity (Attribute `ItemId` + `Quantity`). `ShopService` dan `ConsumableService` memakainya. Konsumsi dipicu `Tool.Activated` di server tanpa Remote. Efek dari `GameConfig.Items`. `Consumable.BlockWhenFull = true`: item tidak terpakai jika status yang dituju sudah penuh.
+- Alternatif yang ditolak: Remote konsumsi dari client (permukaan eksploit lebih besar); logika jumlah di dua modul (duplikasi).
+- Dampak: Efek angka (+20/+15/+25) menyimpang dari GDD untuk Air Mineral (+35); GDD perlu diselaraskan. Tidak ada notifikasi saat konsumsi diblokir karena status penuh. Tool tanpa Handle/aksi klik tetap memicu Activated saat dipegang.

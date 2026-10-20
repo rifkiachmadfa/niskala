@@ -42,16 +42,16 @@ local GameConfig = {
 	},
 
 	-- Shop (Phase 2 dasar). Item & harga di bawah adalah data awal untuk tes sistem.
-	-- Air Mineral mengikuti GDD (5 Koin, Thirsty +35). Roti Gandum dan Ikan Goreng
-	-- BUKAN dari GDD: harga/efek placeholder, perlu disetujui pemilik.
-	-- Field hunger/thirsty belum dipakai (sistem konsumsi item belum dibuat).
+	-- Harga/efek di bawah menurut instruksi pemilik (2026-10-20); Roti Gandum dan Ikan
+	-- Goreng BUKAN item GDD, dan efek Air Mineral (+25) berbeda dari GDD (+35).
+	-- hunger/thirsty = jumlah poin yang ditambah saat item dimakan/diminum.
 	Items = {
 		RotiGandum = {
 			toolName = "RotiGandum", -- nama Tool di ServerStorage/Tools (harus sama persis)
 			name = "Roti Gandum",
 			category = "Makanan",
 			price = 10,
-			hunger = 25,
+			hunger = 15,
 			description = "Roti gandum hangat, mengenyangkan.",
 		},
 		IkanGoreng = {
@@ -59,7 +59,7 @@ local GameConfig = {
 			name = "Ikan Goreng",
 			category = "Makanan",
 			price = 15,
-			hunger = 35,
+			hunger = 20,
 			description = "Ikan segar hasil tangkapan nelayan, digoreng renyah.",
 		},
 		AirMineral = {
@@ -67,9 +67,15 @@ local GameConfig = {
 			name = "Air Mineral",
 			category = "Minuman",
 			price = 5,
-			thirsty = 35,
+			thirsty = 25,
 			description = "Air mineral botol yang menyegarkan.",
 		},
+	},
+
+	Consumable = {
+		Cooldown = 0.8, -- detik antar konsumsi per pemain (cegah klik beruntun)
+		-- true: item tidak dipakai jika status yang dituju sudah penuh (tidak terbuang).
+		BlockWhenFull = true,
 	},
 
 	Shop = {

@@ -6,9 +6,8 @@
 --   * Memakai ProximityPrompt yang sudah ada di model; jika tidak ada, membuat satu
 --     objek logika nonvisual "ShopPrompt" di part jangkar (pola sama dengan DEC-006).
 --   * Membuka sesi toko per pemain, memvalidasi pembelian, memotong koin lewat
---     CurrencyService, dan memberi item ke Backpack. Tool di-Clone dari template di
---     ServerStorage/Tools (nama per item: GameConfig.Items.<id>.toolName); satu Tool
---     per jenis item, jumlah disimpan di Attribute Quantity.
+--     CurrencyService, dan memberi item ke Backpack lewat InventoryService. Tool di-Clone
+--     dari template di ServerStorage/Tools (nama per item: GameConfig.Items.<id>.toolName).
 --
 -- BUKAN tanggung jawab modul ini: saldo koin (CurrencyService), efek konsumsi
 -- item, penyimpanan data.
@@ -19,6 +18,7 @@ local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 
 local CurrencyService = require(script.Parent.Parent.Economy.CurrencyService)
+local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared", 5)
 assert(sharedFolder, "[Shop] ReplicatedStorage.Shared tidak ditemukan.")
@@ -167,30 +167,6 @@ end
 -- Item (Tool di Backpack)
 ------------------------------------------------------------------------
 
-local function findItemTool(player: Player, itemId: string): Tool?
-	local containers: { Instance? } = { player:FindFirstChildOfClass("Backpack"), player.Character }
-	for _, container in containers do
-		if container then
-			for _, child in container:GetChildren() do
-				if child:IsA("Tool") and child:GetAttribute("ItemId") == itemId then
-					return child
-				end
-			end
-		end
-	end
-	return nil
-end
-
--- Jumlah disimpan di Attribute "Quantity" (sumber kebenaran, dibaca sistem lain,
--- mis. konsumsi item). Name/ToolTip hanya tampilan di Backpack: "Ikan Goreng x2".
--- Identitas item TIDAK boleh dibaca dari Name; pakai Attribute "ItemId".
-local function setQuantity(tool: Tool, name: string, quantity: number)
-	tool:SetAttribute("Quantity", quantity)
-	local label = ("%s x%d"):format(name, quantity)
-	tool.Name = label
-	tool.ToolTip = label
-end
-
 -- Template Tool item di ServerStorage (tidak pernah diubah, hanya di-Clone).
 local function getToolTemplate(def: any): Tool?
 	local folder = ServerStorage:FindFirstChild(CFG.ToolsFolderName)
@@ -202,27 +178,6 @@ local function getToolTemplate(def: any): Tool?
 		return template
 	end
 	return nil
-end
-
--- Mengembalikan jumlah baru, atau nil jika Backpack tidak tersedia.
-local function giveItem(player: Player, itemId: string, def: any, template: Tool): number?
-	local existing = findItemTool(player, itemId)
-	if existing then
-		local quantity = (existing:GetAttribute("Quantity") :: number? or 1) + 1
-		setQuantity(existing, def.name, quantity)
-		return quantity
-	end
-
-	local backpack = player:FindFirstChildOfClass("Backpack")
-	if not backpack then
-		return nil
-	end
-	local tool = template:Clone()
-	tool.CanBeDropped = false -- jumlah ada di Attribute; tool yang dibuang akan merusak stack
-	tool:SetAttribute("ItemId", itemId)
-	setQuantity(tool, def.name, 1)
-	tool.Parent = backpack
-	return 1
 end
 
 ------------------------------------------------------------------------
@@ -276,9 +231,7 @@ local function handleBuy(player: Player, vendorId: any, itemId: any): BuyResult
 	if not backpack then
 		return fail("Tas belum siap, coba lagi.")
 	end
-	local existing = findItemTool(player, itemId)
-	local owned: number = if existing then (existing:GetAttribute("Quantity") :: number? or 1) else 0
-	if owned >= CFG.MaxStack then
+	if InventoryService.GetQuantity(player, itemId) >= CFG.MaxStack then
 		return fail(("Kamu sudah membawa %s secukupnya."):format(def.name))
 	end
 
@@ -288,7 +241,7 @@ local function handleBuy(player: Player, vendorId: any, itemId: any): BuyResult
 	end
 	lastBuyAt[player] = now
 
-	local quantity = giveItem(player, itemId, def, template)
+	local quantity = InventoryService.Give(player, itemId, template)
 	if not quantity then
 		CurrencyService.Add(player, def.price) -- kembalikan koin
 		return fail("Tas belum siap, coba lagi.")
