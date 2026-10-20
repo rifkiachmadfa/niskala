@@ -1,0 +1,47 @@
+diff --git a/.ai/CHANGELOG.md b/.ai/CHANGELOG.md
+index 7a67d04..056e487 100644
+--- a/.ai/CHANGELOG.md
++++ b/.ai/CHANGELOG.md
+@@ -38,3 +38,8 @@
+ - Perubahan: Pembelian meng-Clone Tool template dari ServerStorage/Tools (nama per item di `GameConfig.Items.<id>.toolName`) ke Backpack, menggantikan Tool buatan runtime. Template dicek sebelum koin dipotong; peringatan Output saat startup jika Tool tidak ada.
+ - File: src/server/Shop/ShopService.lua, src/shared/GameConfig.lua
+ - Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.
++
++## 2026-10-20 (c) — Jumlah item tampil di Backpack
++- Perubahan: Nama Tool klon di Backpack menampilkan jumlah ("Ikan Goreng x2"), diperbarui setiap pembelian. Attribute `Quantity` tetap sumber kebenaran; identitas item lewat Attribute `ItemId`.
++- File: src/server/Shop/ShopService.lua
++- Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.
+diff --git a/.ai/DECISIONS.md b/.ai/DECISIONS.md
+index eb26e83..f1f4540 100644
+--- a/.ai/DECISIONS.md
++++ b/.ai/DECISIONS.md
+@@ -81,3 +81,9 @@
+ - Keputusan: ShopService memakai Tool buatan pemilik sebagai template (Clone ke Backpack). Satu Tool per jenis item; jumlah di Attribute `Quantity`; `CanBeDropped` dipaksa false pada klon agar stack tidak rusak. Template tidak pernah diubah.
+ - Alternatif yang ditolak: Membuat Tool runtime (mengabaikan aset pemilik).
+ - Dampak: Nama Tool di ServerStorage harus sama persis dengan `toolName` di config. ToolTip klon ditimpa menjadi "<Nama> x<jumlah>".
++
++## DEC-013 — Jumlah item ditampilkan lewat Tool.Name; identitas lewat Attribute ItemId
++- Tanggal: 2026-10-20
++- Keputusan: `Tool.Name` klon diubah menjadi "<Nama> x<jumlah>" agar jumlah terlihat di slot Backpack bawaan. Logika (cari item, konsumsi) memakai Attribute `ItemId` dan `Quantity`, bukan Name.
++- Alternatif yang ditolak: UI Backpack kustom (di luar permintaan; redesign UI butuh persetujuan).
++- Dampak: Script di dalam Tool yang membaca `script.Parent.Name` akan melihat nama berformat. Jika Tool punya TextureId (ikon), slot menampilkan ikon dan teks jumlah terlihat saat hover/di daftar backpack.
+diff --git a/src/server/Shop/ShopService.lua b/src/server/Shop/ShopService.lua
+index 541e416..e27e416 100644
+--- a/src/server/Shop/ShopService.lua
++++ b/src/server/Shop/ShopService.lua
+@@ -181,9 +181,14 @@ local function findItemTool(player: Player, itemId: string): Tool?
+ 	return nil
+ end
+ 
++-- Jumlah disimpan di Attribute "Quantity" (sumber kebenaran, dibaca sistem lain,
++-- mis. konsumsi item). Name/ToolTip hanya tampilan di Backpack: "Ikan Goreng x2".
++-- Identitas item TIDAK boleh dibaca dari Name; pakai Attribute "ItemId".
+ local function setQuantity(tool: Tool, name: string, quantity: number)
+ 	tool:SetAttribute("Quantity", quantity)
+-	tool.ToolTip = ("%s x%d"):format(name, quantity)
++	local label = ("%s x%d"):format(name, quantity)
++	tool.Name = label
++	tool.ToolTip = label
+ end
+ 
+ -- Template Tool item di ServerStorage (tidak pernah diubah, hanya di-Clone).

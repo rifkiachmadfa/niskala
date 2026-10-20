@@ -181,9 +181,14 @@ local function findItemTool(player: Player, itemId: string): Tool?
 	return nil
 end
 
+-- Jumlah disimpan di Attribute "Quantity" (sumber kebenaran, dibaca sistem lain,
+-- mis. konsumsi item). Name/ToolTip hanya tampilan di Backpack: "Ikan Goreng x2".
+-- Identitas item TIDAK boleh dibaca dari Name; pakai Attribute "ItemId".
 local function setQuantity(tool: Tool, name: string, quantity: number)
 	tool:SetAttribute("Quantity", quantity)
-	tool.ToolTip = ("%s x%d"):format(name, quantity)
+	local label = ("%s x%d"):format(name, quantity)
+	tool.Name = label
+	tool.ToolTip = label
 end
 
 -- Template Tool item di ServerStorage (tidak pernah diubah, hanya di-Clone).

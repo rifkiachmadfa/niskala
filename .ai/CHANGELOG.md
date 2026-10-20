@@ -38,3 +38,8 @@
 - Perubahan: Pembelian meng-Clone Tool template dari ServerStorage/Tools (nama per item di `GameConfig.Items.<id>.toolName`) ke Backpack, menggantikan Tool buatan runtime. Template dicek sebelum koin dipotong; peringatan Output saat startup jika Tool tidak ada.
 - File: src/server/Shop/ShopService.lua, src/shared/GameConfig.lua
 - Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.
+
+## 2026-10-20 (c) — Jumlah item tampil di Backpack
+- Perubahan: Nama Tool klon di Backpack menampilkan jumlah ("Ikan Goreng x2"), diperbarui setiap pembelian. Attribute `Quantity` tetap sumber kebenaran; identitas item lewat Attribute `ItemId`.
+- File: src/server/Shop/ShopService.lua
+- Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.

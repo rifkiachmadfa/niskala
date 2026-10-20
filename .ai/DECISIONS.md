@@ -81,3 +81,9 @@
 - Keputusan: ShopService memakai Tool buatan pemilik sebagai template (Clone ke Backpack). Satu Tool per jenis item; jumlah di Attribute `Quantity`; `CanBeDropped` dipaksa false pada klon agar stack tidak rusak. Template tidak pernah diubah.
 - Alternatif yang ditolak: Membuat Tool runtime (mengabaikan aset pemilik).
 - Dampak: Nama Tool di ServerStorage harus sama persis dengan `toolName` di config. ToolTip klon ditimpa menjadi "<Nama> x<jumlah>".
+
+## DEC-013 — Jumlah item ditampilkan lewat Tool.Name; identitas lewat Attribute ItemId
+- Tanggal: 2026-10-20
+- Keputusan: `Tool.Name` klon diubah menjadi "<Nama> x<jumlah>" agar jumlah terlihat di slot Backpack bawaan. Logika (cari item, konsumsi) memakai Attribute `ItemId` dan `Quantity`, bukan Name.
+- Alternatif yang ditolak: UI Backpack kustom (di luar permintaan; redesign UI butuh persetujuan).
+- Dampak: Script di dalam Tool yang membaca `script.Parent.Name` akan melihat nama berformat. Jika Tool punya TextureId (ikon), slot menampilkan ikon dan teks jumlah terlihat saat hover/di daftar backpack.
