@@ -56,3 +56,17 @@
 - Keputusan: Instruksi terbaru pemilik menang (CLAUDE.md bagian 2). Angka GDD (8 dan 6 detik) dipakai sebagai "detik berjalan per poin". Deteksi jalan di server dari perpindahan horizontal HumanoidRootPart. HP berkurang saat Hunger DAN Thirsty = 0 (GDD: cukup Hunger = 0). Damage 2 HP / 2 dtk (nilai baru, bisa diubah di `GameConfig.Survival`).
 - Alternatif yang ditolak: Berbasis waktu murni (sesuai GDD, bukan permintaan); membaca `Humanoid.MoveDirection` (lebih mudah dimanipulasi client).
 - Dampak: GDD perlu diselaraskan oleh pemilik. Efek lambat Thirsty 0 (60%), regen HP, dan respawn di Pelabuhan BELUM dikerjakan (bagian Phase 2 lain).
+
+## DEC-009 — Durasi kosong Hunger/Thirsty 6:30; HUD kiri atas tanpa angka
+- Tanggal: 2026-10-19
+- Konteks / masalah: Pemilik meminta bar kosong dalam 6 menit 30 detik dan Thirsty turun lebih signifikan dari Hunger. Permintaan tidak merinci apakah 6:30 itu waktu berjalan dan apakah kedua bar kosong bersamaan.
+- Keputusan: 6:30 = detik BERJALAN (konsisten dengan DEC-008). Hunger kosong pada 390 dtk (3.9 dtk/poin), Thirsty pada 260 dtk (2.6 dtk/poin, 1.5x lebih cepat). Keadaan "keduanya kosong" (HP mulai turun) tercapai pada 6:30. Menggantikan angka 8 dan 6 dari DEC-008.
+- Alternatif yang ditolak: Kedua bar kosong tepat pada 6:30 dengan laju sama (bertentangan dengan "thirst lebih cepat").
+- Dampak: Angka di `GameConfig.Survival`. HUD: bar LAPAR, HAUS, HP di kiri atas tanpa nominal.
+
+## DEC-010 — Konsep baru: bar habis 3:00 (Hunger) dan 1:30 (Thirsty); HP bar tengah bawah
+- Tanggal: 2026-10-19
+- Konteks / masalah: Pemilik mengubah konsep: "hunger berkurang 1 selama 3 menit, thirst 1 menit 30 detik". Frasa ini ambigu (1 poin dari 100? atau 1 bar penuh?).
+- Keputusan: Dibaca sebagai 1 bar penuh habis dalam 3:00 (Hunger) dan 1:30 (Thirsty): 1.8 dan 0.9 dtk/poin. Menggantikan DEC-009. Tambah `DrainOnlyWhileWalking` (default true) agar mode berbasis waktu bisa dipilih tanpa ubah kode. HP bar tengah bawah: hijau, oranye saat HP <= 50, merah saat HP <= 25 (nilai di config).
+- Alternatif yang ditolak: 1 poin per 3 menit (bar penuh habis 5 jam, tidak masuk akal untuk gameplay).
+- Dampak: Menyimpang jauh dari GDD (8 dtk/6 dtk per poin); GDD perlu diselaraskan. Starvation (kedua bar 0) dimulai pada 3:00.

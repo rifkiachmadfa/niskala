@@ -2,8 +2,8 @@
 -- PlayerStats: pemilik state Hunger/Thirsty per pemain (server = sumber kebenaran).
 --
 -- Perilaku:
---   * Hunger dan Thirsty hanya berkurang saat pemain benar-benar bergerak
---     (diukur server dari perpindahan HumanoidRootPart, bukan dari klaim client).
+--   * Hunger dan Thirsty berkurang (default: hanya saat pemain benar-benar bergerak,
+--     diukur server dari perpindahan HumanoidRootPart; atur DrainOnlyWhileWalking).
 --   * Thirsty turun lebih cepat daripada Hunger (lihat GameConfig.Survival).
 --   * Jika Hunger DAN Thirsty kosong, HP berkurang berkala.
 --   * Setelah mati, nilai di-set ke RespawnHunger/RespawnThirsty saat karakter muncul lagi.
@@ -157,7 +157,8 @@ local function tick(dt: number)
 		end
 
 		local walking = isWalking(data, humanoid, dt)
-		local damage = SurvivalLogic.Step(data.state, dt, walking, CFG)
+		local draining = walking or not CFG.DrainOnlyWhileWalking
+		local damage = SurvivalLogic.Step(data.state, dt, draining, CFG)
 		publish(player, data)
 
 		if damage > 0 and humanoid.Health > 0 then

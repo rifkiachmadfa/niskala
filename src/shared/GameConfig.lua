@@ -9,7 +9,7 @@ local GameConfig = {
 	TrustGateThreshold = 70,
 
 	-- Survival ringan (Hunger/Thirsty). Pengurangan berjalan HANYA saat pemain
-	-- bergerak (instruksi pemilik 2026-10-19; GDD asli: berbasis waktu 8 dtk / 6 dtk).
+	-- bergerak (instruksi pemilik 2026-10-19; GDD asli: berbasis waktu 8 dtk / 6 dtk per poin).
 	Survival = {
 		MaxStat = 100, -- GDD
 		StartHunger = 100,
@@ -17,10 +17,13 @@ local GameConfig = {
 		RespawnHunger = 50, -- GDD: setelah HP habis, Hunger/Thirsty = 50
 		RespawnThirsty = 50,
 
-		-- Detik BERJALAN yang dibutuhkan untuk kehilangan 1 poin.
-		-- Thirsty harus lebih kecil dari Hunger agar Thirsty lebih cepat turun.
-		HungerWalkSecondsPerPoint = 8,
-		ThirstWalkSecondsPerPoint = 6,
+		-- Detik yang dibutuhkan untuk kehilangan 1 poin (maks 100 poin).
+		-- Hunger: 1.8 dtk/poin => bar penuh habis dalam 180 dtk (3 menit).
+		-- Thirsty: 0.9 dtk/poin => bar penuh habis dalam 90 dtk (1 menit 30 dtk).
+		HungerWalkSecondsPerPoint = 1.8,
+		ThirstWalkSecondsPerPoint = 0.9,
+		-- true: hanya berkurang saat pemain bergerak. false: berkurang terus (berbasis waktu).
+		DrainOnlyWhileWalking = true,
 
 		-- Deteksi "sedang berjalan": kecepatan horizontal nyata (stud/detik).
 		MinWalkSpeed = 2,
@@ -32,6 +35,10 @@ local GameConfig = {
 		-- StarvationDamage setiap StarvationDamageInterval detik.
 		StarvationDamage = 2,
 		StarvationDamageInterval = 2,
+
+		-- Warna bar HP (nilai HP absolut, MaxHealth 100): hijau > 50 > oranye > 25 > merah.
+		HpOrangeAtOrBelow = 50,
+		HpRedAtOrBelow = 25,
 	},
 
 	Dialogue = {

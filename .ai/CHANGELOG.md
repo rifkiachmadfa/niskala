@@ -17,3 +17,13 @@
 - Sistem terdampak: baru (survival). `GameConfig` ditambah tabel `Survival`.
 - File: src/shared/GameConfig.lua, src/server/Stats/{PlayerStats,SurvivalLogic}.lua, src/server/Stats/StatsBootstrap.server.lua, src/client/Stats/StatsHud.client.lua
 - Hasil test: sintaks 5 file lolos luau-compile; logika murni (SurvivalLogic) lulus 15 tes di Luau CLI. BELUM diuji di Roblox Studio (deteksi jalan, HUD, kematian/respawn).
+
+## 2026-10-19 (d) — Tuning 6:30 dan HUD kiri atas
+- Perubahan: Laju Hunger 3.9 dtk/poin dan Thirsty 2.6 dtk/poin (kosong pada 6:30 / 4:20 berjalan). HUD dipindah ke kiri atas, ditambah bar HP, angka dihapus.
+- File: src/shared/GameConfig.lua, src/client/Stats/StatsHud.client.lua, .ai/DECISIONS.md
+- Hasil test: sintaks lolos; simulasi logika 390 dtk lulus. BELUM diuji di Studio.
+
+## 2026-10-19 (e) — Laju 3:00/1:30, HP bar tengah bawah berwarna
+- Perubahan: Hunger 1.8 dtk/poin, Thirsty 0.9 dtk/poin; opsi DrainOnlyWhileWalking; HUD Hunger/Thirsty kiri atas tanpa angka, HP bar tengah bawah (hijau/oranye<=50/merah<=25).
+- File: src/shared/GameConfig.lua, src/server/Stats/PlayerStats.lua, src/client/Stats/StatsHud.client.lua, .ai/DECISIONS.md
+- Hasil test: sintaks lolos, simulasi laju lulus. BELUM diuji di Studio.
