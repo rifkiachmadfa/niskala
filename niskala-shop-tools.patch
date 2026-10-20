@@ -1,0 +1,190 @@
+diff --git a/.ai/CHANGELOG.md b/.ai/CHANGELOG.md
+index 5d18947..7a67d04 100644
+--- a/.ai/CHANGELOG.md
++++ b/.ai/CHANGELOG.md
+@@ -33,3 +33,8 @@
+ - Sistem terdampak: baru (shop, economy). `GameConfig` ditambah `Items` dan `Shop`.
+ - File: src/shared/GameConfig.lua, src/server/Economy/CurrencyService.lua, src/server/Shop/{ShopService,ShopBootstrap.server}.lua, src/client/Shop/ShopClient.client.lua
+ - Hasil test: sintaks 5 file lolos luau-compile; logika validasi saldo lulus tes Luau CLI. BELUM diuji di Roblox Studio (model Jokok, prompt, GUI, Backpack).
++
++## 2026-10-20 (b) — Shop memakai Tool dari ServerStorage/Tools
++- Perubahan: Pembelian meng-Clone Tool template dari ServerStorage/Tools (nama per item di `GameConfig.Items.<id>.toolName`) ke Backpack, menggantikan Tool buatan runtime. Template dicek sebelum koin dipotong; peringatan Output saat startup jika Tool tidak ada.
++- File: src/server/Shop/ShopService.lua, src/shared/GameConfig.lua
++- Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.
+diff --git a/.ai/DECISIONS.md b/.ai/DECISIONS.md
+index 7dd9273..eb26e83 100644
+--- a/.ai/DECISIONS.md
++++ b/.ai/DECISIONS.md
+@@ -75,3 +75,9 @@
+ - Tanggal: 2026-10-20
+ - Keputusan: Saldo Koin di `CurrencyService` (memori, mulai dari `GameConfig.StartingCoins`), dicerminkan ke Attribute `Coins`. API Get/Add/Spend dipertahankan saat Save (Phase 8) ditambah.
+ - Dampak: Saldo reset saat pemain keluar. Roti Gandum dan Ikan Goreng bukan item GDD (harga placeholder); Backpack Roblox kosong saat respawn sampai InventoryService/Save ada.
++
++## DEC-012 — Tool item di-Clone dari ServerStorage/Tools, bukan dibuat runtime
++- Tanggal: 2026-10-20
++- Keputusan: ShopService memakai Tool buatan pemilik sebagai template (Clone ke Backpack). Satu Tool per jenis item; jumlah di Attribute `Quantity`; `CanBeDropped` dipaksa false pada klon agar stack tidak rusak. Template tidak pernah diubah.
++- Alternatif yang ditolak: Membuat Tool runtime (mengabaikan aset pemilik).
++- Dampak: Nama Tool di ServerStorage harus sama persis dengan `toolName` di config. ToolTip klon ditimpa menjadi "<Nama> x<jumlah>".
+diff --git a/src/server/Shop/ShopService.lua b/src/server/Shop/ShopService.lua
+index 578984d..541e416 100644
+--- a/src/server/Shop/ShopService.lua
++++ b/src/server/Shop/ShopService.lua
+@@ -6,14 +6,16 @@
+ --   * Memakai ProximityPrompt yang sudah ada di model; jika tidak ada, membuat satu
+ --     objek logika nonvisual "ShopPrompt" di part jangkar (pola sama dengan DEC-006).
+ --   * Membuka sesi toko per pemain, memvalidasi pembelian, memotong koin lewat
+---     CurrencyService, dan memberi item ke Backpack (Tool, satu Tool per jenis item
+---     dengan Attribute Quantity).
++--     CurrencyService, dan memberi item ke Backpack. Tool di-Clone dari template di
++--     ServerStorage/Tools (nama per item: GameConfig.Items.<id>.toolName); satu Tool
++--     per jenis item, jumlah disimpan di Attribute Quantity.
+ --
+ -- BUKAN tanggung jawab modul ini: saldo koin (CurrencyService), efek konsumsi
+ -- item, penyimpanan data.
+ 
+ local Players = game:GetService("Players")
+ local ReplicatedStorage = game:GetService("ReplicatedStorage")
++local ServerStorage = game:GetService("ServerStorage")
+ local Workspace = game:GetService("Workspace")
+ 
+ local CurrencyService = require(script.Parent.Parent.Economy.CurrencyService)
+@@ -184,8 +186,21 @@ local function setQuantity(tool: Tool, name: string, quantity: number)
+ 	tool.ToolTip = ("%s x%d"):format(name, quantity)
+ end
+ 
++-- Template Tool item di ServerStorage (tidak pernah diubah, hanya di-Clone).
++local function getToolTemplate(def: any): Tool?
++	local folder = ServerStorage:FindFirstChild(CFG.ToolsFolderName)
++	if not folder then
++		return nil
++	end
++	local template = folder:FindFirstChild(def.toolName)
++	if template and template:IsA("Tool") then
++		return template
++	end
++	return nil
++end
++
+ -- Mengembalikan jumlah baru, atau nil jika Backpack tidak tersedia.
+-local function giveItem(player: Player, itemId: string, def: any): number?
++local function giveItem(player: Player, itemId: string, def: any, template: Tool): number?
+ 	local existing = findItemTool(player, itemId)
+ 	if existing then
+ 		local quantity = (existing:GetAttribute("Quantity") :: number? or 1) + 1
+@@ -197,10 +212,8 @@ local function giveItem(player: Player, itemId: string, def: any): number?
+ 	if not backpack then
+ 		return nil
+ 	end
+-	local tool = Instance.new("Tool")
+-	tool.Name = def.name
+-	tool.RequiresHandle = false
+-	tool.CanBeDropped = false
++	local tool = template:Clone()
++	tool.CanBeDropped = false -- jumlah ada di Attribute; tool yang dibuang akan merusak stack
+ 	tool:SetAttribute("ItemId", itemId)
+ 	setQuantity(tool, def.name, 1)
+ 	tool.Parent = backpack
+@@ -244,6 +257,16 @@ local function handleBuy(player: Player, vendorId: any, itemId: any): BuyResult
+ 		return fail("Barang tidak tersedia.")
+ 	end
+ 
++	local template = getToolTemplate(def)
++	if not template then
++		warn(("[Shop] Tool '%s' tidak ada di ServerStorage/%s. Pembelian '%s' dibatalkan."):format(
++			tostring(def.toolName),
++			CFG.ToolsFolderName,
++			itemId
++		))
++		return fail("Barang sedang tidak tersedia.")
++	end
++
+ 	local backpack = player:FindFirstChildOfClass("Backpack")
+ 	if not backpack then
+ 		return fail("Tas belum siap, coba lagi.")
+@@ -260,7 +283,7 @@ local function handleBuy(player: Player, vendorId: any, itemId: any): BuyResult
+ 	end
+ 	lastBuyAt[player] = now
+ 
+-	local quantity = giveItem(player, itemId, def)
++	local quantity = giveItem(player, itemId, def, template)
+ 	if not quantity then
+ 		CurrencyService.Add(player, def.price) -- kembalikan koin
+ 		return fail("Tas belum siap, coba lagi.")
+@@ -344,6 +367,32 @@ end
+ -- Start
+ ------------------------------------------------------------------------
+ 
++-- Memberi peringatan di Output jika Tool item belum ada di ServerStorage.
++local function validateTools()
++	local folder = ServerStorage:WaitForChild(CFG.ToolsFolderName, 10)
++	if not folder then
++		warn(("[Shop] Folder ServerStorage/%s tidak ditemukan. Pembelian akan ditolak."):format(CFG.ToolsFolderName))
++		return
++	end
++	local available = {}
++	for _, child in folder:GetChildren() do
++		table.insert(available, child.Name .. "(" .. child.ClassName .. ")")
++	end
++	for _, vendor in CFG.Vendors do
++		for _, itemId in vendor.itemIds do
++			local def = GameConfig.Items[itemId]
++			if def and not getToolTemplate(def) then
++				warn(("[Shop] Tool '%s' (item %s) tidak ada/bukan Tool di ServerStorage/%s. Isi folder: %s"):format(
++					tostring(def.toolName),
++					itemId,
++					CFG.ToolsFolderName,
++					table.concat(available, ", ")
++				))
++			end
++		end
++	end
++end
++
+ local function getOrCreate(parent: Instance, className: string, name: string): any
+ 	local existing = parent:FindFirstChild(name)
+ 	if existing then
+@@ -391,6 +440,7 @@ function ShopService.Start()
+ 	for vendorId, config in CFG.Vendors do
+ 		setupVendor(vendorId, config)
+ 	end
++	task.spawn(validateTools)
+ end
+ 
+ return ShopService
+diff --git a/src/shared/GameConfig.lua b/src/shared/GameConfig.lua
+index c8bd9c7..c89607c 100644
+--- a/src/shared/GameConfig.lua
++++ b/src/shared/GameConfig.lua
+@@ -47,6 +47,7 @@ local GameConfig = {
+ 	-- Field hunger/thirsty belum dipakai (sistem konsumsi item belum dibuat).
+ 	Items = {
+ 		RotiGandum = {
++			toolName = "RotiGandung", -- nama Tool di ServerStorage/Tools (harus sama persis)
+ 			name = "Roti Gandum",
+ 			category = "Makanan",
+ 			price = 10,
+@@ -54,6 +55,7 @@ local GameConfig = {
+ 			description = "Roti gandum hangat, mengenyangkan.",
+ 		},
+ 		IkanGoreng = {
++			toolName = "IkanGoreng", -- nama Tool di ServerStorage/Tools (harus sama persis)
+ 			name = "Ikan Goreng",
+ 			category = "Makanan",
+ 			price = 15,
+@@ -61,6 +63,7 @@ local GameConfig = {
+ 			description = "Ikan segar hasil tangkapan nelayan, digoreng renyah.",
+ 		},
+ 		AirMineral = {
++			toolName = "AirMineral", -- nama Tool di ServerStorage/Tools (harus sama persis)
+ 			name = "Air Mineral",
+ 			category = "Minuman",
+ 			price = 5,
+@@ -70,6 +73,8 @@ local GameConfig = {
+ 	},
+ 
+ 	Shop = {
++		-- Folder di ServerStorage berisi Tool template. Tool di-Clone ke Backpack saat membeli.
++		ToolsFolderName = "Tools",
+ 		-- Jarak maksimum pemain ke NPC penjual saat membeli = MaxActivationDistance
+ 		-- prompt + padding ini (stud). Dicek server pada setiap pembelian.
+ 		ClosePadding = 8,

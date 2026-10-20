@@ -47,6 +47,7 @@ local GameConfig = {
 	-- Field hunger/thirsty belum dipakai (sistem konsumsi item belum dibuat).
 	Items = {
 		RotiGandum = {
+			toolName = "RotiGandum", -- nama Tool di ServerStorage/Tools (harus sama persis)
 			name = "Roti Gandum",
 			category = "Makanan",
 			price = 10,
@@ -54,6 +55,7 @@ local GameConfig = {
 			description = "Roti gandum hangat, mengenyangkan.",
 		},
 		IkanGoreng = {
+			toolName = "IkanGoreng", -- nama Tool di ServerStorage/Tools (harus sama persis)
 			name = "Ikan Goreng",
 			category = "Makanan",
 			price = 15,
@@ -61,6 +63,7 @@ local GameConfig = {
 			description = "Ikan segar hasil tangkapan nelayan, digoreng renyah.",
 		},
 		AirMineral = {
+			toolName = "AirMineral", -- nama Tool di ServerStorage/Tools (harus sama persis)
 			name = "Air Mineral",
 			category = "Minuman",
 			price = 5,
@@ -70,6 +73,8 @@ local GameConfig = {
 	},
 
 	Shop = {
+		-- Folder di ServerStorage berisi Tool template. Tool di-Clone ke Backpack saat membeli.
+		ToolsFolderName = "Tools",
 		-- Jarak maksimum pemain ke NPC penjual saat membeli = MaxActivationDistance
 		-- prompt + padding ini (stud). Dicek server pada setiap pembelian.
 		ClosePadding = 8,

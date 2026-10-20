@@ -6,14 +6,16 @@
 --   * Memakai ProximityPrompt yang sudah ada di model; jika tidak ada, membuat satu
 --     objek logika nonvisual "ShopPrompt" di part jangkar (pola sama dengan DEC-006).
 --   * Membuka sesi toko per pemain, memvalidasi pembelian, memotong koin lewat
---     CurrencyService, dan memberi item ke Backpack (Tool, satu Tool per jenis item
---     dengan Attribute Quantity).
+--     CurrencyService, dan memberi item ke Backpack. Tool di-Clone dari template di
+--     ServerStorage/Tools (nama per item: GameConfig.Items.<id>.toolName); satu Tool
+--     per jenis item, jumlah disimpan di Attribute Quantity.
 --
 -- BUKAN tanggung jawab modul ini: saldo koin (CurrencyService), efek konsumsi
 -- item, penyimpanan data.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 
 local CurrencyService = require(script.Parent.Parent.Economy.CurrencyService)
@@ -184,8 +186,21 @@ local function setQuantity(tool: Tool, name: string, quantity: number)
 	tool.ToolTip = ("%s x%d"):format(name, quantity)
 end
 
+-- Template Tool item di ServerStorage (tidak pernah diubah, hanya di-Clone).
+local function getToolTemplate(def: any): Tool?
+	local folder = ServerStorage:FindFirstChild(CFG.ToolsFolderName)
+	if not folder then
+		return nil
+	end
+	local template = folder:FindFirstChild(def.toolName)
+	if template and template:IsA("Tool") then
+		return template
+	end
+	return nil
+end
+
 -- Mengembalikan jumlah baru, atau nil jika Backpack tidak tersedia.
-local function giveItem(player: Player, itemId: string, def: any): number?
+local function giveItem(player: Player, itemId: string, def: any, template: Tool): number?
 	local existing = findItemTool(player, itemId)
 	if existing then
 		local quantity = (existing:GetAttribute("Quantity") :: number? or 1) + 1
@@ -197,10 +212,8 @@ local function giveItem(player: Player, itemId: string, def: any): number?
 	if not backpack then
 		return nil
 	end
-	local tool = Instance.new("Tool")
-	tool.Name = def.name
-	tool.RequiresHandle = false
-	tool.CanBeDropped = false
+	local tool = template:Clone()
+	tool.CanBeDropped = false -- jumlah ada di Attribute; tool yang dibuang akan merusak stack
 	tool:SetAttribute("ItemId", itemId)
 	setQuantity(tool, def.name, 1)
 	tool.Parent = backpack
@@ -244,6 +257,16 @@ local function handleBuy(player: Player, vendorId: any, itemId: any): BuyResult
 		return fail("Barang tidak tersedia.")
 	end
 
+	local template = getToolTemplate(def)
+	if not template then
+		warn(("[Shop] Tool '%s' tidak ada di ServerStorage/%s. Pembelian '%s' dibatalkan."):format(
+			tostring(def.toolName),
+			CFG.ToolsFolderName,
+			itemId
+		))
+		return fail("Barang sedang tidak tersedia.")
+	end
+
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	if not backpack then
 		return fail("Tas belum siap, coba lagi.")
@@ -260,7 +283,7 @@ local function handleBuy(player: Player, vendorId: any, itemId: any): BuyResult
 	end
 	lastBuyAt[player] = now
 
-	local quantity = giveItem(player, itemId, def)
+	local quantity = giveItem(player, itemId, def, template)
 	if not quantity then
 		CurrencyService.Add(player, def.price) -- kembalikan koin
 		return fail("Tas belum siap, coba lagi.")
@@ -344,6 +367,32 @@ end
 -- Start
 ------------------------------------------------------------------------
 
+-- Memberi peringatan di Output jika Tool item belum ada di ServerStorage.
+local function validateTools()
+	local folder = ServerStorage:WaitForChild(CFG.ToolsFolderName, 10)
+	if not folder then
+		warn(("[Shop] Folder ServerStorage/%s tidak ditemukan. Pembelian akan ditolak."):format(CFG.ToolsFolderName))
+		return
+	end
+	local available = {}
+	for _, child in folder:GetChildren() do
+		table.insert(available, child.Name .. "(" .. child.ClassName .. ")")
+	end
+	for _, vendor in CFG.Vendors do
+		for _, itemId in vendor.itemIds do
+			local def = GameConfig.Items[itemId]
+			if def and not getToolTemplate(def) then
+				warn(("[Shop] Tool '%s' (item %s) tidak ada/bukan Tool di ServerStorage/%s. Isi folder: %s"):format(
+					tostring(def.toolName),
+					itemId,
+					CFG.ToolsFolderName,
+					table.concat(available, ", ")
+				))
+			end
+		end
+	end
+end
+
 local function getOrCreate(parent: Instance, className: string, name: string): any
 	local existing = parent:FindFirstChild(name)
 	if existing then
@@ -391,6 +440,7 @@ function ShopService.Start()
 	for vendorId, config in CFG.Vendors do
 		setupVendor(vendorId, config)
 	end
+	task.spawn(validateTools)
 end
 
 return ShopService

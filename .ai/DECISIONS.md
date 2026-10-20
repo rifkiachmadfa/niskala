@@ -75,3 +75,9 @@
 - Tanggal: 2026-10-20
 - Keputusan: Saldo Koin di `CurrencyService` (memori, mulai dari `GameConfig.StartingCoins`), dicerminkan ke Attribute `Coins`. API Get/Add/Spend dipertahankan saat Save (Phase 8) ditambah.
 - Dampak: Saldo reset saat pemain keluar. Roti Gandum dan Ikan Goreng bukan item GDD (harga placeholder); Backpack Roblox kosong saat respawn sampai InventoryService/Save ada.
+
+## DEC-012 — Tool item di-Clone dari ServerStorage/Tools, bukan dibuat runtime
+- Tanggal: 2026-10-20
+- Keputusan: ShopService memakai Tool buatan pemilik sebagai template (Clone ke Backpack). Satu Tool per jenis item; jumlah di Attribute `Quantity`; `CanBeDropped` dipaksa false pada klon agar stack tidak rusak. Template tidak pernah diubah.
+- Alternatif yang ditolak: Membuat Tool runtime (mengabaikan aset pemilik).
+- Dampak: Nama Tool di ServerStorage harus sama persis dengan `toolName` di config. ToolTip klon ditimpa menjadi "<Nama> x<jumlah>".

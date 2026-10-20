@@ -33,3 +33,8 @@
 - Sistem terdampak: baru (shop, economy). `GameConfig` ditambah `Items` dan `Shop`.
 - File: src/shared/GameConfig.lua, src/server/Economy/CurrencyService.lua, src/server/Shop/{ShopService,ShopBootstrap.server}.lua, src/client/Shop/ShopClient.client.lua
 - Hasil test: sintaks 5 file lolos luau-compile; logika validasi saldo lulus tes Luau CLI. BELUM diuji di Roblox Studio (model Jokok, prompt, GUI, Backpack).
+
+## 2026-10-20 (b) — Shop memakai Tool dari ServerStorage/Tools
+- Perubahan: Pembelian meng-Clone Tool template dari ServerStorage/Tools (nama per item di `GameConfig.Items.<id>.toolName`) ke Backpack, menggantikan Tool buatan runtime. Template dicek sebelum koin dipotong; peringatan Output saat startup jika Tool tidak ada.
+- File: src/server/Shop/ShopService.lua, src/shared/GameConfig.lua
+- Hasil test: sintaks lolos luau-compile. BELUM diuji di Roblox Studio.
