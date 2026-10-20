@@ -11,7 +11,13 @@
 -- State dicerminkan ke Attribute Player ("Hunger", "Thirsty") agar HUD client bisa
 -- membaca tanpa Remote. Client tidak bisa mengubah state server lewat Attribute.
 --
--- BUKAN tanggung jawab modul ini: koin, shop, regen HP, efek lambat Thirsty 0.
+-- HP (server = sumber kebenaran):
+--   * Regen bawaan Roblox (script "Health" di karakter) DIMATIKAN. HP tidak boleh naik
+--     sendiri; kenaikan HP yang tidak berasal dari modul ini otomatis dibatalkan.
+--   * Satu-satunya jalur penyembuhan: regen berbasis Hunger (GameConfig.Survival.HpRegen),
+--     yaitu hanya aktif jika Hunger cukup tinggi (artinya pemain sudah makan).
+--
+-- BUKAN tanggung jawab modul ini: koin, shop, efek lambat Thirsty 0.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -33,6 +39,10 @@ type PlayerData = {
 	diedConn: RBXScriptConnection?,
 	shownHunger: number,
 	shownThirst: number,
+	healthConn: RBXScriptConnection?,
+	healthScriptConn: RBXScriptConnection?,
+	trackedHealth: number,
+	regenTimer: number,
 }
 
 local PlayerStats = {}
@@ -63,6 +73,45 @@ local function getHumanoid(player: Player): Humanoid?
 	return character:FindFirstChildOfClass("Humanoid")
 end
 
+-- Setiap karakter otomatis mendapat script bawaan Roblox bernama "Health" yang
+-- meregen HP ~1%/detik. Script itu dihapus agar HP tidak naik sendiri.
+local function stripDefaultRegen(data: PlayerData, character: Model)
+	local function check(child: Instance)
+		if child.Name == "Health" and child:IsA("Script") then
+			child:Destroy()
+		end
+	end
+	if data.healthScriptConn then
+		data.healthScriptConn:Disconnect()
+	end
+	for _, child in character:GetChildren() do
+		check(child)
+	end
+	data.healthScriptConn = character.ChildAdded:Connect(check)
+end
+
+-- Pagar kedua: kenaikan HP yang tidak diotorisasi modul ini dibatalkan.
+local function guardHealth(data: PlayerData, humanoid: Humanoid)
+	if data.healthConn then
+		data.healthConn:Disconnect()
+	end
+	data.trackedHealth = humanoid.Health
+	data.healthConn = humanoid.HealthChanged:Connect(function(newHealth: number)
+		if newHealth <= data.trackedHealth then
+			data.trackedHealth = newHealth -- damage / mati selalu diterima
+		elseif data.trackedHealth > 0 then
+			humanoid.Health = data.trackedHealth -- naik tanpa izin: batalkan
+		end
+	end)
+end
+
+-- Satu-satunya cara resmi menaikkan HP.
+local function authorizedHeal(data: PlayerData, humanoid: Humanoid, amount: number)
+	local target = math.min(humanoid.MaxHealth, humanoid.Health + amount)
+	data.trackedHealth = target
+	humanoid.Health = target
+end
+
 local function onCharacterAdded(player: Player, character: Model)
 	local data = dataByPlayer[player]
 	if not data then
@@ -70,10 +119,12 @@ local function onCharacterAdded(player: Player, character: Model)
 	end
 
 	data.lastPos = nil
+	data.regenTimer = 0
 	if data.diedConn then
 		data.diedConn:Disconnect()
 		data.diedConn = nil
 	end
+	stripDefaultRegen(data, character)
 
 	if data.respawnReset then
 		data.respawnReset = false
@@ -83,6 +134,7 @@ local function onCharacterAdded(player: Player, character: Model)
 
 	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
 	if humanoid and dataByPlayer[player] == data then
+		guardHealth(data, humanoid)
 		data.diedConn = humanoid.Died:Connect(function()
 			data.respawnReset = true
 		end)
@@ -102,6 +154,10 @@ local function addPlayer(player: Player)
 		diedConn = nil,
 		shownHunger = -1,
 		shownThirst = -1,
+		healthConn = nil,
+		healthScriptConn = nil,
+		trackedHealth = 0,
+		regenTimer = 0,
 	}
 	dataByPlayer[player] = data
 	publish(player, data)
@@ -124,6 +180,12 @@ local function removePlayer(player: Player)
 	end
 	if data.diedConn then
 		data.diedConn:Disconnect()
+	end
+	if data.healthConn then
+		data.healthConn:Disconnect()
+	end
+	if data.healthScriptConn then
+		data.healthScriptConn:Disconnect()
 	end
 	dataByPlayer[player] = nil
 end
@@ -164,6 +226,21 @@ local function tick(dt: number)
 		if damage > 0 and humanoid.Health > 0 then
 			-- Set langsung (bukan TakeDamage) agar tidak diblok ForceField spawn.
 			humanoid.Health = math.max(0, humanoid.Health - damage)
+		end
+
+		-- Regen HP hanya jika Hunger cukup tinggi (GDD), bukan regen bawaan Roblox.
+		local regen = CFG.HpRegen
+		if regen and regen.Enabled and humanoid.Health > 0 and humanoid.Health < humanoid.MaxHealth
+			and SurvivalLogic.Display(data.state.hunger) > regen.HungerAbove
+		then
+			data.regenTimer += dt
+			local ticks = math.floor(data.regenTimer / regen.Interval)
+			if ticks > 0 then
+				data.regenTimer -= ticks * regen.Interval
+				authorizedHeal(data, humanoid, ticks * regen.Amount)
+			end
+		else
+			data.regenTimer = 0
 		end
 	end
 end

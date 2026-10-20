@@ -36,6 +36,16 @@ local GameConfig = {
 		StarvationDamage = 2,
 		StarvationDamageInterval = 2,
 
+		-- Regen HP (GDD: +1 HP tiap 5 dtk jika Hunger > 60). HP TIDAK regen sendiri;
+		-- regen hanya aktif saat Hunger di atas HungerAbove (pemain sudah makan).
+		-- Set Enabled = false jika HP hanya boleh pulih lewat item penyembuh.
+		HpRegen = {
+			Enabled = true,
+			HungerAbove = 60,
+			Amount = 1,
+			Interval = 5,
+		},
+
 		-- Warna bar HP (nilai HP absolut, MaxHealth 100): hijau > 50 > oranye > 25 > merah.
 		HpOrangeAtOrBelow = 50,
 		HpRedAtOrBelow = 25,
