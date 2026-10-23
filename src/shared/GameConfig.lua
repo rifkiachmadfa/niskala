@@ -110,6 +110,23 @@ local GameConfig = {
 		},
 	},
 
+	-- Quest. Angka mengikuti GDD (kayu: 6 dari 18 titik, 80 Koin, +20 kepercayaan).
+	-- Placeholder dialog bisa memakai {Quests.Wood.target} dst.
+	Quests = {
+		Wood = {
+			target = 6,
+			rewardCoins = 80,
+			rewardTrust = 20,
+			-- BELUM TERVERIFIKASI: nama Folder/Model di Workspace yang anak-anaknya adalah
+			-- titik kayu (GDD: 18 titik). Dicari rekursif. Sesuaikan dengan Explorer.
+			spawnContainerName = "WoodSpawns",
+			spawnCount = 18, -- hanya untuk peringatan jika jumlah titik berbeda
+			promptDistance = 10, -- dipakai jika titik belum punya ProximityPrompt
+			-- true: titik kayu disembunyikan (hanya di sisi client pemain) saat tidak aktif.
+			hideInactive = true,
+		},
+	},
+
 	Dialogue = {
 		-- Dialog tertutup otomatis jika pemain lebih jauh dari
 		-- (MaxActivationDistance prompt + padding ini) dari NPC.

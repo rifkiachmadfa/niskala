@@ -82,8 +82,16 @@ end
 ------------------------------------------------------------------------
 
 local function formatText(text: string): string
-	local result = string.gsub(text, "{(%w+)}", function(key: string)
-		local value = GameConfig[key]
+	local result = string.gsub(text, "{([%w_%.]+)}", function(key: string)
+		-- Mendukung path bertitik, mis. {Quests.Wood.target}.
+		local value: any = GameConfig
+		for part in string.gmatch(key, "[^%.]+") do
+			if type(value) ~= "table" then
+				value = nil
+				break
+			end
+			value = value[part]
+		end
 		if value ~= nil then
 			return tostring(value)
 		end
@@ -91,6 +99,18 @@ local function formatText(text: string): string
 		return nil
 	end)
 	return result
+end
+
+local function makeContext(player: Player): Types.SelectContext
+	return {
+		player = player,
+		hasFlag = function(key: string)
+			return DialogueService.HasFlag(player, key)
+		end,
+		getFlag = function(key: string)
+			return DialogueService.GetFlag(player, key)
+		end,
+	}
 end
 
 local function getRoot(player: Player): BasePart?
@@ -170,15 +190,7 @@ local function startConversation(
 		return -- validasi jarak di server
 	end
 
-	local ctx: Types.SelectContext = {
-		player = player,
-		hasFlag = function(key: string)
-			return DialogueService.HasFlag(player, key)
-		end,
-		getFlag = function(key: string)
-			return DialogueService.GetFlag(player, key)
-		end,
-	}
+	local ctx = makeContext(player)
 
 	local ok, conversationId = pcall(def.selectConversation, ctx)
 	if not ok then
@@ -364,6 +376,12 @@ function DialogueService.Start(definitions: { Types.NPCDefinition })
 		if conversation and conversation.setFlags then
 			for key, value in conversation.setFlags do
 				DialogueService.SetFlag(player, key, value)
+			end
+		end
+		if conversation and conversation.onFinish then
+			local okFinish, err = pcall(conversation.onFinish, makeContext(player))
+			if not okFinish then
+				warn(("[Dialogue] onFinish error (NPC '%s', percakapan '%s'): %s"):format(session.npcId, session.conversationId, tostring(err)))
 			end
 		end
 	end)

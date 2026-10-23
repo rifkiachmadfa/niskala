@@ -9,6 +9,7 @@ local Types = require(script.Parent.DialogueTypes)
 
 local registry: { Types.NPCDefinition } = {
 	require(script.Parent.Data.Bambang),
+	require(script.Parent.Data.Agoesz),
 }
 
 return registry

@@ -41,3 +41,8 @@ Branch: main
 ## Update 2026-10-20
 - Shop Jokok: kode ditulis (src/server/Shop, src/server/Economy, src/client/Shop), sintaks lolos, BELUM diuji di Studio. Butuh: Model NPC bernama sesuai `GameConfig.Shop.Vendors.Jokok.modelName` ("Jokok", belum diverifikasi).
 - Catatan: info "BLOCKER default.project.json belum ada" di atas sudah usang; file kini ada (src/server -> ServerScriptService.Server, src/client -> StarterPlayerScripts.Client, src/shared -> ReplicatedStorage.Shared).
+
+## Update 2026-10-20 (Quest Kayu + Agoesz)
+- Kode ditulis (sintaks lolos luau-compile, BELUM diuji di Studio): `src/server/Quest/{QuestService,WoodQuest,QuestBootstrap}`, `src/server/Trust/TrustService`, `src/server/Dialogue/Data/Agoesz`, `src/client/Quest/QuestClient`. Dialog mendapat `onFinish` dan placeholder bertitik (`{Quests.Wood.target}`).
+- BELUM TERVERIFIKASI di Workspace: Model "Agoesz" (+ part "Head"), dan nama Folder titik kayu `GameConfig.Quests.Wood.spawnContainerName` ("WoodSpawns" = tebakan). Quest Kayu otomatis nonaktif + warn jika folder tidak ditemukan.
+- Belum ada: Quest Padi, Quest Bantu Warga, quest tracker/log UI, Gerbang Candi (TrustService belum terhubung), penyimpanan state quest/kepercayaan (Phase 8).

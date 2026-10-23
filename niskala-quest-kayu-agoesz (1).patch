@@ -1,0 +1,846 @@
+diff --git a/.ai/CURRENT_STATE.md b/.ai/CURRENT_STATE.md
+index 15bef24..48f2f49 100644
+--- a/.ai/CURRENT_STATE.md
++++ b/.ai/CURRENT_STATE.md
+@@ -41,3 +41,8 @@ Branch: main
+ ## Update 2026-10-20
+ - Shop Jokok: kode ditulis (src/server/Shop, src/server/Economy, src/client/Shop), sintaks lolos, BELUM diuji di Studio. Butuh: Model NPC bernama sesuai `GameConfig.Shop.Vendors.Jokok.modelName` ("Jokok", belum diverifikasi).
+ - Catatan: info "BLOCKER default.project.json belum ada" di atas sudah usang; file kini ada (src/server -> ServerScriptService.Server, src/client -> StarterPlayerScripts.Client, src/shared -> ReplicatedStorage.Shared).
++
++## Update 2026-10-20 (Quest Kayu + Agoesz)
++- Kode ditulis (sintaks lolos luau-compile, BELUM diuji di Studio): `src/server/Quest/{QuestService,WoodQuest,QuestBootstrap}`, `src/server/Trust/TrustService`, `src/server/Dialogue/Data/Agoesz`, `src/client/Quest/QuestClient`. Dialog mendapat `onFinish` dan placeholder bertitik (`{Quests.Wood.target}`).
++- BELUM TERVERIFIKASI di Workspace: Model "Agoesz" (+ part "Head"), dan nama Folder titik kayu `GameConfig.Quests.Wood.spawnContainerName` ("WoodSpawns" = tebakan). Quest Kayu otomatis nonaktif + warn jika folder tidak ditemukan.
++- Belum ada: Quest Padi, Quest Bantu Warga, quest tracker/log UI, Gerbang Candi (TrustService belum terhubung), penyimpanan state quest/kepercayaan (Phase 8).
+diff --git a/src/client/Quest/QuestClient.client.lua b/src/client/Quest/QuestClient.client.lua
+new file mode 100644
+index 0000000..2b7669f
+--- /dev/null
++++ b/src/client/Quest/QuestClient.client.lua
+@@ -0,0 +1,112 @@
++--!strict
++-- QuestClient: presentasi quest di sisi client. TIDAK menentukan hasil apa pun.
++--   * Menyembunyikan titik kayu yang tidak aktif untuk pemain ini (hanya lokal,
++--     Workspace di server tidak berubah; server tetap memvalidasi setiap pengambilan).
++--   * Menampilkan notifikasi kecil (mis. "Kayu 2/6").
++
++local Players = game:GetService("Players")
++local ReplicatedStorage = game:GetService("ReplicatedStorage")
++local TweenService = game:GetService("TweenService")
++
++local localPlayer = Players.LocalPlayer
++local playerGui = localPlayer:WaitForChild("PlayerGui")
++
++local remotes = ReplicatedStorage:WaitForChild("QuestRemotes")
++local syncRemote = remotes:WaitForChild("Sync") :: RemoteEvent
++local notifyRemote = remotes:WaitForChild("Notify") :: RemoteEvent
++local requestSyncRemote = remotes:WaitForChild("RequestSync") :: RemoteEvent
++
++------------------------------------------------------------------------
++-- Visibilitas titik (lokal)
++------------------------------------------------------------------------
++
++local function setPointVisible(point: Instance, visible: boolean)
++	local function apply(instance: Instance)
++		if instance:IsA("BasePart") then
++			instance.LocalTransparencyModifier = if visible then 0 else 1
++		elseif instance:IsA("ProximityPrompt") then
++			instance.Enabled = visible
++		end
++	end
++	apply(point)
++	for _, descendant in point:GetDescendants() do
++		apply(descendant)
++	end
++end
++
++type SyncPayload = {
++	hideInactive: boolean,
++	points: { Instance },
++	active: { Instance },
++}
++
++syncRemote.OnClientEvent:Connect(function(payload: SyncPayload)
++	if type(payload) ~= "table" or not payload.hideInactive then
++		return
++	end
++	local activeSet: { [Instance]: boolean } = {}
++	for _, point in payload.active do
++		activeSet[point] = true
++	end
++	for _, point in payload.points do
++		setPointVisible(point, activeSet[point] == true)
++	end
++end)
++
++------------------------------------------------------------------------
++-- Notifikasi sederhana
++------------------------------------------------------------------------
++
++local gui = Instance.new("ScreenGui")
++gui.Name = "QuestNotify"
++gui.ResetOnSpawn = false
++gui.IgnoreGuiInset = true
++gui.DisplayOrder = 20
++gui.Parent = playerGui
++
++local label = Instance.new("TextLabel")
++label.AnchorPoint = Vector2.new(0.5, 0)
++label.Position = UDim2.new(0.5, 0, 0.14, 0)
++label.Size = UDim2.new(0, 360, 0, 40)
++label.BackgroundColor3 = Color3.fromRGB(28, 32, 40)
++label.BackgroundTransparency = 1
++label.TextColor3 = Color3.fromRGB(240, 180, 50)
++label.TextTransparency = 1
++label.TextScaled = true
++label.Font = Enum.Font.GothamBold
++label.Text = ""
++label.Parent = gui
++
++local corner = Instance.new("UICorner")
++corner.CornerRadius = UDim.new(0, 10)
++corner.Parent = label
++
++local padding = Instance.new("UIPadding")
++padding.PaddingLeft = UDim.new(0, 12)
++padding.PaddingRight = UDim.new(0, 12)
++padding.PaddingTop = UDim.new(0, 6)
++padding.PaddingBottom = UDim.new(0, 6)
++padding.Parent = label
++
++local toastId = 0
++
++notifyRemote.OnClientEvent:Connect(function(text: unknown)
++	if type(text) ~= "string" then
++		return
++	end
++	toastId += 1
++	local myId = toastId
++	label.Text = text
++	label.BackgroundTransparency = 0.15
++	label.TextTransparency = 0
++	task.delay(3, function()
++		if toastId ~= myId then
++			return -- ada notifikasi yang lebih baru
++		end
++		local info = TweenInfo.new(0.4)
++		TweenService:Create(label, info, { BackgroundTransparency = 1, TextTransparency = 1 }):Play()
++	end)
++end)
++
++-- Minta status awal setelah semua listener terpasang.
++requestSyncRemote:FireServer()
+diff --git a/src/server/Dialogue/Data/Agoesz.lua b/src/server/Dialogue/Data/Agoesz.lua
+new file mode 100644
+index 0000000..794fd88
+--- /dev/null
++++ b/src/server/Dialogue/Data/Agoesz.lua
+@@ -0,0 +1,79 @@
++--!strict
++-- Data dialog NPC Agoesz (pemberi quest di Desa).
++-- Hanya DATA + pemanggilan QuestService; logika quest ada di QuestService/WoodQuest.
++-- Quest Padi dan Quest Bantu Warga menyusul sebagai tugas terpisah.
++
++local Types = require(script.Parent.Parent.DialogueTypes)
++local QuestService = require(script.Parent.Parent.Parent.Quest.QuestService)
++
++local WOOD = "Wood"
++
++local Agoesz: Types.NPCDefinition = {
++	id = "Agoesz",
++	displayName = "Agoesz",
++	modelName = "Agoesz",
++	focusPartName = "Head",
++	prompt = {
++		actionText = "Bicara",
++		maxActivationDistance = 10,
++	},
++
++	conversations = {
++		WoodOffer = {
++			lines = {
++				{ text = "Oh, pendatang baru ya? Aku Agoesz. Kebetulan sekali, aku sedang butuh bantuan." },
++				{ text = "Desa kami kekurangan kayu. Bisa tolong carikan {Quests.Wood.target} potong kayu di hutan?" },
++				{ text = "Kayunya tersebar di beberapa tempat di hutan, jadi cari baik-baik. Dekati lalu tekan E untuk mengambilnya." },
++				{ text = "Kalau sudah terkumpul semua, antarkan ke aku di sini. Aku beri {Quests.Wood.rewardCoins} Koin, dan warga akan lebih percaya padamu." },
++			},
++			onFinish = function(ctx)
++				QuestService.Start(ctx.player, WOOD)
++			end,
++		},
++
++		WoodActive = {
++			lines = {
++				{ text = "Kayunya belum cukup, ya? Aku butuh {Quests.Wood.target} potong. Cari di sekitar hutan, tekan E untuk mengambilnya." },
++			},
++		},
++
++		WoodTurnIn = {
++			lines = {
++				{ text = "Wah, kayunya sudah terkumpul semua! Terima kasih banyak, ini sangat membantu desa." },
++				{ text = "Ini upahmu: {Quests.Wood.rewardCoins} Koin. Warga juga mulai mempercayaimu." },
++			},
++			onFinish = function(ctx)
++				QuestService.TurnIn(ctx.player, WOOD)
++			end,
++		},
++
++		Unavailable = {
++			lines = {
++				{ text = "Halo! Hari ini aku belum butuh bantuan apa-apa. Mampir lagi nanti ya." },
++			},
++		},
++
++		AfterWood = {
++			lines = {
++				{ text = "Terima kasih lagi untuk kayunya! Kalau ada tugas lain, nanti kukabari." },
++			},
++		},
++	},
++
++	selectConversation = function(ctx)
++		local state = QuestService.GetState(ctx.player, WOOD)
++		if state == "Active" then
++			return "WoodActive"
++		elseif state == "ReadyToTurnIn" then
++			return "WoodTurnIn"
++		elseif state == "Completed" then
++			return "AfterWood"
++		end
++		if not QuestService.IsAvailable(WOOD) then
++			return "Unavailable"
++		end
++		return "WoodOffer"
++	end,
++}
++
++return Agoesz
+diff --git a/src/server/Dialogue/DialogueService.lua b/src/server/Dialogue/DialogueService.lua
+index 8a6818d..c56b35f 100644
+--- a/src/server/Dialogue/DialogueService.lua
++++ b/src/server/Dialogue/DialogueService.lua
+@@ -82,8 +82,16 @@ end
+ ------------------------------------------------------------------------
+ 
+ local function formatText(text: string): string
+-	local result = string.gsub(text, "{(%w+)}", function(key: string)
+-		local value = GameConfig[key]
++	local result = string.gsub(text, "{([%w_%.]+)}", function(key: string)
++		-- Mendukung path bertitik, mis. {Quests.Wood.target}.
++		local value: any = GameConfig
++		for part in string.gmatch(key, "[^%.]+") do
++			if type(value) ~= "table" then
++				value = nil
++				break
++			end
++			value = value[part]
++		end
+ 		if value ~= nil then
+ 			return tostring(value)
+ 		end
+@@ -93,6 +101,18 @@ local function formatText(text: string): string
+ 	return result
+ end
+ 
++local function makeContext(player: Player): Types.SelectContext
++	return {
++		player = player,
++		hasFlag = function(key: string)
++			return DialogueService.HasFlag(player, key)
++		end,
++		getFlag = function(key: string)
++			return DialogueService.GetFlag(player, key)
++		end,
++	}
++end
++
+ local function getRoot(player: Player): BasePart?
+ 	local character = player.Character
+ 	if not character then
+@@ -170,15 +190,7 @@ local function startConversation(
+ 		return -- validasi jarak di server
+ 	end
+ 
+-	local ctx: Types.SelectContext = {
+-		player = player,
+-		hasFlag = function(key: string)
+-			return DialogueService.HasFlag(player, key)
+-		end,
+-		getFlag = function(key: string)
+-			return DialogueService.GetFlag(player, key)
+-		end,
+-	}
++	local ctx = makeContext(player)
+ 
+ 	local ok, conversationId = pcall(def.selectConversation, ctx)
+ 	if not ok then
+@@ -366,6 +378,12 @@ function DialogueService.Start(definitions: { Types.NPCDefinition })
+ 				DialogueService.SetFlag(player, key, value)
+ 			end
+ 		end
++		if conversation and conversation.onFinish then
++			local okFinish, err = pcall(conversation.onFinish, makeContext(player))
++			if not okFinish then
++				warn(("[Dialogue] onFinish error (NPC '%s', percakapan '%s'): %s"):format(session.npcId, session.conversationId, tostring(err)))
++			end
++		end
+ 	end)
+ 
+ 	Players.PlayerRemoving:Connect(function(player: Player)
+diff --git a/src/server/Dialogue/DialogueTypes.lua b/src/server/Dialogue/DialogueTypes.lua
+index c030902..bc306c5 100644
+--- a/src/server/Dialogue/DialogueTypes.lua
++++ b/src/server/Dialogue/DialogueTypes.lua
+@@ -10,6 +10,9 @@ export type Conversation = {
+ 	lines: { Line },
+ 	-- Flag dialog yang di-set server setelah percakapan selesai atau dilewati.
+ 	setFlags: { [string]: any }?,
++	-- Dipanggil server setelah percakapan selesai/dilewati (sesi sudah divalidasi).
++	-- Dipakai mis. untuk menerima quest atau menyerahkan hasil quest.
++	onFinish: ((ctx: SelectContext) -> ())?,
+ }
+ 
+ export type SelectContext = {
+diff --git a/src/server/Dialogue/NPCRegistry.lua b/src/server/Dialogue/NPCRegistry.lua
+index 811264d..db3ce9b 100644
+--- a/src/server/Dialogue/NPCRegistry.lua
++++ b/src/server/Dialogue/NPCRegistry.lua
+@@ -9,6 +9,7 @@ local Types = require(script.Parent.DialogueTypes)
+ 
+ local registry: { Types.NPCDefinition } = {
+ 	require(script.Parent.Data.Bambang),
++	require(script.Parent.Data.Agoesz),
+ }
+ 
+ return registry
+diff --git a/src/server/Quest/QuestBootstrap.server.lua b/src/server/Quest/QuestBootstrap.server.lua
+new file mode 100644
+index 0000000..af490d6
+--- /dev/null
++++ b/src/server/Quest/QuestBootstrap.server.lua
+@@ -0,0 +1,7 @@
++--!strict
++-- Titik masuk sistem Quest (server).
++-- Dialog Agoesz (Dialogue/Data/Agoesz) memakai QuestService untuk menerima/menyerahkan quest.
++
++local WoodQuest = require(script.Parent.WoodQuest)
++
++WoodQuest.Start()
+diff --git a/src/server/Quest/QuestService.lua b/src/server/Quest/QuestService.lua
+new file mode 100644
+index 0000000..fbaa6bb
+--- /dev/null
++++ b/src/server/Quest/QuestService.lua
+@@ -0,0 +1,174 @@
++--!strict
++-- QuestService: pemilik tunggal STATE quest per pemain (server = sumber kebenaran).
++--
++-- State: NotStarted -> Active -> ReadyToTurnIn -> Completed (hanya sekali).
++-- Modul ini tidak tahu apa pun tentang objek Workspace; logika spesifik quest
++-- (mis. titik kayu) ada di modul terpisah yang memakai API ini.
++--
++-- Hadiah (Koin + Kepercayaan) hanya diberikan di TurnIn, tepat satu kali.
++-- STATUS: state hanya di memori server (belum disimpan -> Phase 8). State melekat pada
++-- Player, bukan karakter, jadi respawn tidak menghapus progres.
++-- Cermin ke Attribute Player: "Quest_<id>_State" dan "Quest_<id>_Progress".
++
++local Players = game:GetService("Players")
++local ReplicatedStorage = game:GetService("ReplicatedStorage")
++
++local CurrencyService = require(script.Parent.Parent.Economy.CurrencyService)
++local TrustService = require(script.Parent.Parent.Trust.TrustService)
++
++local sharedFolder = ReplicatedStorage:WaitForChild("Shared", 5)
++assert(sharedFolder, "[Quest] ReplicatedStorage.Shared tidak ditemukan.")
++local configModule = sharedFolder:WaitForChild("GameConfig", 5)
++assert(configModule, "[Quest] ReplicatedStorage.Shared.GameConfig tidak ditemukan.")
++local GameConfig = require(configModule :: ModuleScript) :: any
++
++export type State = "NotStarted" | "Active" | "ReadyToTurnIn" | "Completed"
++
++type QuestData = { state: State, progress: number }
++type Listener = (player: Player, questId: string, state: State, progress: number) -> ()
++
++local QuestService = {}
++
++local dataByPlayer: { [Player]: { [string]: QuestData } } = {}
++local listeners: { Listener } = {}
++local unavailable: { [string]: boolean } = {}
++
++local function getDef(questId: string): any?
++	local def = GameConfig.Quests[questId]
++	if not def then
++		warn(("[Quest] Quest '%s' tidak ada di GameConfig.Quests"):format(questId))
++	end
++	return def
++end
++
++local function getData(player: Player, questId: string): QuestData?
++	local quests = dataByPlayer[player]
++	if not quests then
++		return nil
++	end
++	local data = quests[questId]
++	if not data then
++		data = { state = "NotStarted", progress = 0 }
++		quests[questId] = data
++	end
++	return data
++end
++
++local function publish(player: Player, questId: string, data: QuestData)
++	player:SetAttribute(("Quest_%s_State"):format(questId), data.state)
++	player:SetAttribute(("Quest_%s_Progress"):format(questId), data.progress)
++end
++
++local function notify(player: Player, questId: string, data: QuestData)
++	publish(player, questId, data)
++	for _, listener in listeners do
++		local ok, err = pcall(listener, player, questId, data.state, data.progress)
++		if not ok then
++			warn(("[Quest] Listener error (%s): %s"):format(questId, tostring(err)))
++		end
++	end
++end
++
++function QuestService.GetState(player: Player, questId: string): State
++	local data = getData(player, questId)
++	return if data then data.state else "NotStarted"
++end
++
++function QuestService.GetProgress(player: Player, questId: string): number
++	local data = getData(player, questId)
++	return if data then data.progress else 0
++end
++
++-- Dipanggil modul quest saat state/progres berubah. Listener berjalan di server.
++function QuestService.Subscribe(listener: Listener)
++	table.insert(listeners, listener)
++end
++
++-- Modul quest menandai quest tidak bisa dijalankan (mis. objek Workspace tidak ditemukan)
++-- agar pemain tidak terjebak di quest yang mustahil diselesaikan.
++function QuestService.SetAvailable(questId: string, available: boolean)
++	unavailable[questId] = if available then nil else true
++end
++
++function QuestService.IsAvailable(questId: string): boolean
++	return unavailable[questId] ~= true
++end
++
++-- NotStarted -> Active. Gagal jika quest sudah pernah dimulai/selesai.
++function QuestService.Start(player: Player, questId: string): boolean
++	if not getDef(questId) or unavailable[questId] then
++		return false
++	end
++	local data = getData(player, questId)
++	if not data or data.state ~= "NotStarted" then
++		return false
++	end
++	data.state = "Active"
++	data.progress = 0
++	notify(player, questId, data)
++	return true
++end
++
++-- Menambah progres quest yang sedang Active. Mengembalikan progres baru, atau nil jika ditolak.
++-- Mencapai target -> state menjadi ReadyToTurnIn (hadiah BELUM diberikan).
++function QuestService.AddProgress(player: Player, questId: string, amount: number): number?
++	local def = getDef(questId)
++	local data = getData(player, questId)
++	if not def or not data or data.state ~= "Active" then
++		return nil
++	end
++	if type(amount) ~= "number" or amount ~= amount or amount < 1 or amount ~= math.floor(amount) then
++		return nil
++	end
++	data.progress = math.min(def.target, data.progress + amount)
++	if data.progress >= def.target then
++		data.state = "ReadyToTurnIn"
++	end
++	notify(player, questId, data)
++	return data.progress
++end
++
++-- ReadyToTurnIn -> Completed + hadiah. State diubah SEBELUM hadiah diberikan agar
++-- pemanggilan ganda tidak bisa memberi hadiah dua kali.
++function QuestService.TurnIn(player: Player, questId: string): boolean
++	local def = getDef(questId)
++	local data = getData(player, questId)
++	if not def or not data or data.state ~= "ReadyToTurnIn" then
++		return false
++	end
++	data.state = "Completed"
++	if not CurrencyService.Add(player, def.rewardCoins) then
++		warn(("[Quest] Gagal memberi %d Koin untuk quest '%s' (%s)"):format(def.rewardCoins, questId, player.Name))
++	end
++	if not TrustService.Add(player, def.rewardTrust) then
++		warn(("[Quest] Gagal memberi %d kepercayaan untuk quest '%s' (%s)"):format(def.rewardTrust, questId, player.Name))
++	end
++	notify(player, questId, data)
++	return true
++end
++
++local started = false
++
++function QuestService.Init()
++	if started then
++		return
++	end
++	started = true
++	CurrencyService.Start()
++	TrustService.Start()
++	Players.PlayerAdded:Connect(function(player: Player)
++		if not dataByPlayer[player] then
++			dataByPlayer[player] = {}
++		end
++	end)
++	Players.PlayerRemoving:Connect(function(player: Player)
++		dataByPlayer[player] = nil
++	end)
++	for _, player in Players:GetPlayers() do
++		if not dataByPlayer[player] then
++			dataByPlayer[player] = {}
++		end
++	end
++end
++
++return QuestService
+diff --git a/src/server/Quest/WoodQuest.lua b/src/server/Quest/WoodQuest.lua
+new file mode 100644
+index 0000000..d7da5dc
+--- /dev/null
++++ b/src/server/Quest/WoodQuest.lua
+@@ -0,0 +1,240 @@
++--!strict
++-- WoodQuest: logika quest Kayu (Hutan). Memakai titik kayu yang SUDAH ADA di Workspace.
++--
++--   * Saat quest dimulai, dipilih tepat `target` titik BERBEDA secara acak dari semua titik.
++--   * Kayu hanya dihitung jika pemain benar-benar berhasil mengambilnya (divalidasi server:
++--     state quest, titik termasuk yang terpilih untuk pemain itu, belum diambil, jarak).
++--   * Menyerahkan kayu ke Agoesz dilakukan lewat dialog (QuestService.TurnIn).
++--
++-- Tidak ada Part/model yang dibuat atau dipindah. Jika sebuah titik belum punya
++-- ProximityPrompt, dibuat satu objek logika nonvisual "KayuPrompt". Visibilitas titik
++-- per pemain diatur di sisi client (QuestClient) lewat remote Sync.
++
++local Players = game:GetService("Players")
++local ReplicatedStorage = game:GetService("ReplicatedStorage")
++local Workspace = game:GetService("Workspace")
++
++local QuestService = require(script.Parent.QuestService)
++
++local sharedFolder = ReplicatedStorage:WaitForChild("Shared", 5)
++assert(sharedFolder, "[WoodQuest] ReplicatedStorage.Shared tidak ditemukan.")
++local configModule = sharedFolder:WaitForChild("GameConfig", 5)
++assert(configModule, "[WoodQuest] ReplicatedStorage.Shared.GameConfig tidak ditemukan.")
++local GameConfig = require(configModule :: ModuleScript) :: any
++
++local QUEST_ID = "Wood"
++local CFG = GameConfig.Quests.Wood
++local DISTANCE_PADDING = 8 -- toleransi jarak validasi server di atas MaxActivationDistance
++
++local WoodQuest = {}
++
++local points: { Instance } = {}
++-- Titik yang MASIH bisa diambil, per pemain.
++local remainingByPlayer: { [Player]: { [Instance]: boolean } } = {}
++local rng = Random.new()
++local started = false
++
++local syncRemote: RemoteEvent
++local notifyRemote: RemoteEvent
++local requestSyncRemote: RemoteEvent
++
++local function getOrCreateRemote(folder: Folder, name: string): RemoteEvent
++	local existing = folder:FindFirstChild(name)
++	if existing and existing:IsA("RemoteEvent") then
++		return existing
++	end
++	local remote = Instance.new("RemoteEvent")
++	remote.Name = name
++	remote.Parent = folder
++	return remote
++end
++
++local function getPointPart(point: Instance): BasePart?
++	if point:IsA("BasePart") then
++		return point
++	end
++	if point:IsA("Model") then
++		return point.PrimaryPart or point:FindFirstChildWhichIsA("BasePart", true)
++	end
++	return nil
++end
++
++local function findContainer(name: string): Instance?
++	local found: Instance? = nil
++	local count = 0
++	for _, instance in Workspace:GetDescendants() do
++		if instance.Name == name and (instance:IsA("Folder") or instance:IsA("Model")) then
++			count += 1
++			if not found then
++				found = instance
++			end
++		end
++	end
++	if count > 1 then
++		warn(("[WoodQuest] Ada %d objek bernama '%s'. Memakai yang pertama ditemukan."):format(count, name))
++	end
++	return found
++end
++
++-- Kirim ke client: semua titik kayu + titik yang saat ini aktif untuk pemain ini.
++local function sendSync(player: Player)
++	local active: { Instance } = {}
++	local remaining = remainingByPlayer[player]
++	if remaining then
++		for point in remaining do
++			table.insert(active, point)
++		end
++	end
++	syncRemote:FireClient(player, {
++		hideInactive = CFG.hideInactive,
++		points = points,
++		active = active,
++	})
++end
++
++local function notifyPlayer(player: Player, text: string)
++	notifyRemote:FireClient(player, text)
++end
++
++local function pickPoints(player: Player)
++	-- Fisher-Yates pada salinan, ambil `target` titik pertama => tidak ada duplikasi.
++	local pool = table.clone(points)
++	for i = #pool, 2, -1 do
++		local j = rng:NextInteger(1, i)
++		pool[i], pool[j] = pool[j], pool[i]
++	end
++	local chosen: { [Instance]: boolean } = {}
++	for i = 1, math.min(CFG.target, #pool) do
++		chosen[pool[i]] = true
++	end
++	remainingByPlayer[player] = chosen
++end
++
++local function onPickup(player: Player, point: Instance, prompt: ProximityPrompt, part: BasePart)
++	local remaining = remainingByPlayer[player]
++	if not remaining or not remaining[point] then
++		return -- bukan titik terpilih untuk pemain ini, atau sudah diambil
++	end
++	if QuestService.GetState(player, QUEST_ID) ~= "Active" then
++		return
++	end
++	local character = player.Character
++	local root = character and character:FindFirstChild("HumanoidRootPart")
++	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
++	if not (root and root:IsA("BasePart")) or not humanoid or humanoid.Health <= 0 then
++		return
++	end
++	if (root.Position - part.Position).Magnitude > prompt.MaxActivationDistance + DISTANCE_PADDING then
++		return
++	end
++
++	remaining[point] = nil -- tandai SEBELUM menambah progres agar tidak bisa dihitung dua kali
++	local progress = QuestService.AddProgress(player, QUEST_ID, 1)
++	if progress == nil then
++		remaining[point] = true -- progres ditolak: kembalikan titik
++		return
++	end
++	sendSync(player)
++	if progress >= CFG.target then
++		notifyPlayer(player, ("Kayu terkumpul %d/%d. Antarkan ke Agoesz di desa!"):format(progress, CFG.target))
++	else
++		notifyPlayer(player, ("Kayu %d/%d"):format(progress, CFG.target))
++	end
++end
++
++local function bindPoint(point: Instance)
++	local part = getPointPart(point)
++	if not part then
++		warn(("[WoodQuest] Titik '%s' tidak punya BasePart. Dilewati."):format(point:GetFullName()))
++		return
++	end
++
++	local prompt = point:FindFirstChildWhichIsA("ProximityPrompt", true)
++	if not prompt then
++		local newPrompt = Instance.new("ProximityPrompt")
++		newPrompt.Name = "KayuPrompt"
++		newPrompt.ActionText = "Ambil"
++		newPrompt.ObjectText = "Kayu"
++		newPrompt.HoldDuration = 0
++		newPrompt.MaxActivationDistance = CFG.promptDistance
++		newPrompt.RequiresLineOfSight = false
++		newPrompt.KeyboardKeyCode = Enum.KeyCode.E
++		newPrompt.Parent = part
++		prompt = newPrompt
++	end
++	local bound = prompt :: ProximityPrompt
++	bound.Triggered:Connect(function(player: Player)
++		onPickup(player, point, bound, part)
++	end)
++end
++
++function WoodQuest.Start()
++	if started then
++		return
++	end
++	started = true
++
++	QuestService.Init()
++
++	local folder = ReplicatedStorage:FindFirstChild("QuestRemotes")
++	if not folder then
++		local newFolder = Instance.new("Folder")
++		newFolder.Name = "QuestRemotes"
++		newFolder.Parent = ReplicatedStorage
++		folder = newFolder
++	end
++	local remoteFolder = folder :: Folder
++	syncRemote = getOrCreateRemote(remoteFolder, "Sync") -- server -> client
++	notifyRemote = getOrCreateRemote(remoteFolder, "Notify") -- server -> client
++	requestSyncRemote = getOrCreateRemote(remoteFolder, "RequestSync") -- client -> server
++
++	QuestService.SetAvailable(QUEST_ID, false) -- aktif lagi hanya jika semua titik valid
++	local container = findContainer(CFG.spawnContainerName)
++	if not container then
++		warn(("[WoodQuest] Folder/Model titik kayu '%s' tidak ditemukan di Workspace. Quest Kayu tidak aktif. Sesuaikan GameConfig.Quests.Wood.spawnContainerName dengan nama di Explorer."):format(CFG.spawnContainerName))
++		return
++	end
++	for _, child in container:GetChildren() do
++		if child:IsA("BasePart") or child:IsA("Model") then
++			table.insert(points, child)
++		end
++	end
++	print(("[WoodQuest] %d titik kayu ditemukan di %s"):format(#points, container:GetFullName()))
++	if #points ~= CFG.spawnCount then
++		warn(("[WoodQuest] Jumlah titik kayu %d, GDD/konfigurasi mengharapkan %d."):format(#points, CFG.spawnCount))
++	end
++	if #points < CFG.target then
++		warn(("[WoodQuest] Titik kayu (%d) kurang dari target (%d). Quest Kayu tidak aktif."):format(#points, CFG.target))
++		points = {}
++		return
++	end
++	for _, point in points do
++		bindPoint(point)
++	end
++	QuestService.SetAvailable(QUEST_ID, true)
++
++	QuestService.Subscribe(function(player: Player, questId: string, state: QuestService.State, progress: number)
++		if questId ~= QUEST_ID then
++			return
++		end
++		if state == "Active" and progress == 0 then
++			pickPoints(player)
++		elseif state == "ReadyToTurnIn" or state == "Completed" then
++			remainingByPlayer[player] = {}
++		end
++		sendSync(player)
++		if state == "Completed" then
++			notifyPlayer(player, ("Quest selesai! +%d Koin, +%d kepercayaan warga"):format(CFG.rewardCoins, CFG.rewardTrust))
++		end
++	end)
++
++	requestSyncRemote.OnServerEvent:Connect(function(player: Player)
++		sendSync(player)
++	end)
++
++	Players.PlayerRemoving:Connect(function(player: Player)
++		remainingByPlayer[player] = nil
++	end)
++end
++
++return WoodQuest
+diff --git a/src/server/Trust/TrustService.lua b/src/server/Trust/TrustService.lua
+new file mode 100644
+index 0000000..cc86cce
+--- /dev/null
++++ b/src/server/Trust/TrustService.lua
+@@ -0,0 +1,59 @@
++--!strict
++-- TrustService: pemilik tunggal Kepercayaan Warga per pemain (0-100). Server = sumber kebenaran.
++--
++-- Kepercayaan HANYA bertambah lewat penyelesaian quest (QuestService.TurnIn memanggil Add).
++-- STATUS: nilai hanya di memori server (belum disimpan -> Phase 8). Belum terhubung ke
++-- Gerbang Candi (itu tugas terpisah di Phase 3).
++-- Nilai dicerminkan ke Attribute Player "Trust" agar UI bisa membaca tanpa Remote.
++
++local Players = game:GetService("Players")
++
++local MAX_TRUST = 100 -- GDD: rentang 0-100
++
++local TrustService = {}
++
++local trustByPlayer: { [Player]: number } = {}
++local started = false
++
++local function publish(player: Player)
++	player:SetAttribute("Trust", trustByPlayer[player])
++end
++
++local function addPlayer(player: Player)
++	if trustByPlayer[player] ~= nil then
++		return
++	end
++	trustByPlayer[player] = 0
++	publish(player)
++end
++
++function TrustService.Get(player: Player): number?
++	return trustByPlayer[player]
++end
++
++-- Menambah kepercayaan (bilangan bulat positif). Hasil dijepit ke 0..100.
++function TrustService.Add(player: Player, amount: number): boolean
++	local current = trustByPlayer[player]
++	if current == nil or type(amount) ~= "number" or amount ~= amount or amount <= 0 or amount ~= math.floor(amount) then
++		return false
++	end
++	trustByPlayer[player] = math.min(MAX_TRUST, current + amount)
++	publish(player)
++	return true
++end
++
++function TrustService.Start()
++	if started then
++		return
++	end
++	started = true
++	Players.PlayerAdded:Connect(addPlayer)
++	Players.PlayerRemoving:Connect(function(player: Player)
++		trustByPlayer[player] = nil
++	end)
++	for _, player in Players:GetPlayers() do
++		addPlayer(player)
++	end
++end
++
++return TrustService
+diff --git a/src/shared/GameConfig.lua b/src/shared/GameConfig.lua
+index cc712ed..43e7d87 100644
+--- a/src/shared/GameConfig.lua
++++ b/src/shared/GameConfig.lua
+@@ -110,6 +110,23 @@ local GameConfig = {
+ 		},
+ 	},
+ 
++	-- Quest. Angka mengikuti GDD (kayu: 6 dari 18 titik, 80 Koin, +20 kepercayaan).
++	-- Placeholder dialog bisa memakai {Quests.Wood.target} dst.
++	Quests = {
++		Wood = {
++			target = 6,
++			rewardCoins = 80,
++			rewardTrust = 20,
++			-- BELUM TERVERIFIKASI: nama Folder/Model di Workspace yang anak-anaknya adalah
++			-- titik kayu (GDD: 18 titik). Dicari rekursif. Sesuaikan dengan Explorer.
++			spawnContainerName = "WoodSpawns",
++			spawnCount = 18, -- hanya untuk peringatan jika jumlah titik berbeda
++			promptDistance = 10, -- dipakai jika titik belum punya ProximityPrompt
++			-- true: titik kayu disembunyikan (hanya di sisi client pemain) saat tidak aktif.
++			hideInactive = true,
++		},
++	},
++
+ 	Dialogue = {
+ 		-- Dialog tertutup otomatis jika pemain lebih jauh dari
+ 		-- (MaxActivationDistance prompt + padding ini) dari NPC.

@@ -10,6 +10,9 @@ export type Conversation = {
 	lines: { Line },
 	-- Flag dialog yang di-set server setelah percakapan selesai atau dilewati.
 	setFlags: { [string]: any }?,
+	-- Dipanggil server setelah percakapan selesai/dilewati (sesi sudah divalidasi).
+	-- Dipakai mis. untuk menerima quest atau menyerahkan hasil quest.
+	onFinish: ((ctx: SelectContext) -> ())?,
 }
 
 export type SelectContext = {
